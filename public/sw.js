@@ -1,0 +1,7 @@
+const CACHE='collective-static-v1';
+self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const key of await caches.keys())if(key.startsWith('collective-static-')&&key!==CACHE)await caches.delete(key);await self.clients.claim()})()));
+// Only content-hashed public build assets. Never HTML, API, images from tasks, or account data.
+self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin||!/^\/assets\/[^/]+-[\w-]+\.(js|css)$/.test(url.pathname))return;event.respondWith((async()=>{const cache=await caches.open(CACHE);const cached=await cache.match(event.request);if(cached)return cached;const response=await fetch(event.request);if(response.ok)await cache.put(event.request,response.clone());return response})())});
+self.addEventListener('push',event=>{let payload={};try{payload=event.data.json()}catch{}event.waitUntil(self.registration.showNotification('Collective',{body:'You have a task update',icon:'/icon-192.png',badge:'/icon-192.png',tag:payload.tag||'collective-task',data:{url:typeof payload.url==='string'&&/^\/\?task=[\w-]+$/.test(payload.url)?payload.url:'/'}}))});
+self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil(self.clients.openWindow(new URL(event.notification.data?.url||'/',self.location.origin).href))});

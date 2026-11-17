@@ -1,0 +1,260 @@
+import os
+os.environ['COLLECTIVE_TEST']='true'
+import asyncio
+import json
+import tempfile
+import unittest
+from datetime import datetime,timedelta,timezone
+from pathlib import Path
+from unittest.mock import patch
+from fastapi.testclient import TestClient
+from backend.app import create_app,connection
+from backend.personal import process_one,finish,propose
+from backend.worker import reminders,deliver_one
+
+class PersonalTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(); self.path=Path(self.temp.name)/'db.sqlite'
+        self.app=create_app(self.path,None);self.client=TestClient(self.app)
+        self.client.post('/api/login',json={'email':'admin@gmail.com','password':'1234'})
+        self.user=self.client.get('/api/bootstrap').json()['user'];self.cid=self.client.post('/api/me/conversations').json()['id']
+        self.client.post('/api/admin/members',json={'name':'Arjun','email':'arjun@example.com','password':'abcdefghijk','spaces':['packaging']})
+        self.arjun=TestClient(self.app);self.arjun.post('/api/login',json={'email':'arjun@example.com','password':'abcdefghijk'})
+        self.arjun_id=self.arjun.get('/api/bootstrap').json()['user']['id']
+    def tearDown(self):self.client.close();self.arjun.close();self.temp.cleanup()
+    def queue(self,rid='request-1234',question='Hi Arjun, make an Instagram post for the event',space='packaging'):
+        r=self.client.post('/api/me/ai/runs',json={'request_id':rid,'conversation_id':self.cid,'question':question,'space':space});self.assertEqual(r.status_code,202,r.text);return rid
+    def plan(self,**kwargs):
+        return {'answer':'Here is the plan','actions':[{'tool':'create_task','space':'packaging','args':{'title':'Create Instagram post','assignee_id':self.arjun_id,'priority':'Medium','due_at':(datetime.now(timezone.utc)+timedelta(hours=4)).isoformat(),**kwargs}}]}
+    def process(self,plan,sources=['packaging']):
+        async def fake(*args,**kwargs):return plan,sources
+        with patch('backend.personal.propose',fake):asyncio.run(process_one(self.app,self.app.state.work_service))
+    def test_exactly_once_task_in_assignee_home_and_inbox(self):
+        rid=self.queue();self.queue();self.process(self.plan());self.queue()
+        tasks=self.arjun.get('/api/me/tasks').json()['tasks'];self.assertEqual(len(tasks),1);self.assertEqual(tasks[0]['title'],'Create Instagram post');self.assertEqual(tasks[0]['priority'],'Medium')
+        self.assertEqual(len(self.arjun.get('/api/notifications').json()['notifications']),1)
+        second=create_app(self.path,None);asyncio.run(process_one(second,second.state.work_service));finish(second,second.state.work_service,rid)
+        with connection(second) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM action_receipts').fetchone()[0],1)
+        self.assertEqual(self.client.get('/api/me/ai/runs/'+rid).json()['status'],'completed')
+    def test_transaction_rollback_does_not_leave_unreceipted_task(self):
+        self.queue()
+        with connection(self.app) as c:c.execute("CREATE TRIGGER fail_receipt BEFORE INSERT ON action_receipts BEGIN SELECT RAISE(FAIL,'receipt unavailable'); END")
+        self.process(self.plan());self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'],[])
+        self.assertEqual(self.arjun.get('/api/notifications').json()['notifications'],[])
+        self.assertEqual(len(self.client.get('/api/me/ai/runs/request-1234').json()['result']['failed_actions']),1)
+    def test_clarification_and_past_deadline_do_not_mutate(self):
+        self.queue();self.process({**self.plan(),'clarification':{'question':'Which event?','choices':['A','B']}})
+        self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'],[])
+        self.queue('request-past');self.process(self.plan(due_at='2001-01-01T18:00:00+05:30'))
+        self.assertIsNotNone(self.client.get('/api/me/ai/runs/request-past').json()['result']['clarification'])
+        self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'],[])
+    def test_ambiguous_person_and_workspace(self):
+        self.client.post('/api/admin/members',json={'name':'Arjun Kumar','email':'arjun2@example.com','password':'abcdefghijk','spaces':['packaging']})
+        self.queue();self.process(self.plan());self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'],[])
+        self.assertEqual(len(self.client.get('/api/me/ai/runs/request-1234').json()['result']['clarification']['choices']),2)
+        self.queue('request-space',question='Create a task',space=None);self.process(self.plan(assignee_id=self.user['id']),['packaging','digital'])
+        self.assertIn('workspace',self.client.get('/api/me/ai/runs/request-space').json()['result']['clarification']['question'])
+    def test_latest_workspace_clarification_breaks_loop(self):
+        question='Create a task for Arjun to fix chat\nClarification: Digital & IT\nClarification: Assign to Arjun in Packaging studio\nClarification: Packaging studio'
+        self.queue(question=question,space=None)
+        self.process(self.plan(title='Fix chat'),['packaging','digital'])
+        result=self.client.get('/api/me/ai/runs/request-1234').json()['result']
+        self.assertIsNone(result['clarification'])
+        self.assertEqual(len(result['actions']),1)
+        self.assertEqual(result['actions'][0]['space'],'packaging')
+        self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'][0]['title'],'Fix chat')
+
+    def test_clarification_does_not_override_explicit_workspace(self):
+        self.queue(question='Create a task for Arjun\nClarification: Packaging studio',space='digital')
+        self.process(self.plan(),['digital'])
+        self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'],[])
+
+    def test_pending_query_uses_sql_without_provider(self):
+        self.client.post('/api/spaces/packaging/tasks',json={'title':'Fix chat','assignee_id':self.arjun_id})
+        self.queue(question='what all works are pending',space='packaging')
+        with patch('backend.personal.httpx.AsyncClient',side_effect=AssertionError('Provider must not be called')):
+            asyncio.run(process_one(self.app,self.app.state.work_service))
+        result=self.client.get('/api/me/ai/runs/request-1234').json()['result']
+        self.assertIn('1 pending task',result['answer'])
+        self.assertIn('Fix chat',result['answer'])
+        self.assertEqual(result['actions'],[])
+
+    def test_search_history_and_links_after_revocation(self):
+        self.queue();self.process(self.plan());task=self.arjun.get('/api/me/tasks').json()['tasks'][0]
+        self.assertEqual(len(self.arjun.get('/api/search?q=Instagram').json()),1)
+        self.assertEqual(self.arjun.get('/api/me/conversations/'+self.cid).status_code,404)
+        with connection(self.app) as c:c.execute('DELETE FROM memberships WHERE user_id=? AND space_id=?',(self.user['id'],'packaging'))
+        self.assertEqual(self.client.get('/api/me/conversations/'+self.cid).json(),[])
+        self.assertEqual(self.client.get('/api/me/ai/runs/request-1234').status_code,404)
+        self.assertEqual(self.client.get('/api/tasks/'+task['id']).status_code,403)
+        self.assertEqual(self.client.get('/api/search?q=Instagram').json(),[])
+        self.assertEqual(self.client.get('/api/spaces/packaging/ai').status_code,403)
+    def test_revocation_between_plan_and_commit(self):
+        rid=self.queue()
+        with connection(self.app) as c:
+            c.execute("UPDATE personal_runs SET status='planned',plan=?,sources=? WHERE id=?",(json.dumps(self.plan()),'["packaging"]',rid));c.execute('DELETE FROM memberships WHERE user_id=? AND space_id=?',(self.user['id'],'packaging'))
+        finish(self.app,self.app.state.work_service,rid)
+        self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'],[])
+    def test_private_draft_requires_explicit_scoped_save(self):
+        self.queue();self.process({'answer':'Draft ready','draft':'A private caption','actions':[]})
+        result=self.client.get('/api/me/ai/runs/request-1234').json()['result'];draft=result['draft']['id']
+        self.assertEqual(self.arjun.get('/api/me/tasks').json()['tasks'],[])
+        task=self.client.post('/api/spaces/packaging/tasks',json={'title':'Post','assignee_id':self.arjun_id}).json()
+        self.assertEqual(self.arjun.post('/api/me/drafts/'+draft+'/save',json={'task_id':task['id']}).status_code,404)
+        self.assertEqual(self.client.post('/api/me/drafts/'+draft+'/save',json={'task_id':task['id']}).status_code,200)
+        self.assertEqual(self.arjun.get('/api/tasks/'+task['id']).json()['description'],'A private caption')
+    def test_channel_mentions_and_scope(self):
+        plain=self.client.post('/api/spaces/packaging/thread',json={'request_id':'plain-message','text':'@AI in plain text does not authorize an action'});self.assertEqual(plain.status_code,201)
+        with connection(self.app) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM personal_runs').fetchone()[0],0)
+        r=self.client.post('/api/spaces/packaging/thread',json={'request_id':'mention-message','text':'Create a task','mentions':['AI']});self.assertEqual(r.status_code,201)
+        malicious=self.plan();malicious['actions'][0]['space']='digital';self.process(malicious)
+        with connection(self.app) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],0)
+        thread=self.client.get('/api/spaces/packaging/thread').json();self.assertEqual(thread[-1]['parent_id'],'mention-message')
+    def test_deadline_changes_done_and_preferences(self):
+        task=self.client.post('/api/spaces/packaging/tasks',json={'title':'Deadline','assignee_id':self.arjun_id,'due_at':(datetime.now(timezone.utc)+timedelta(minutes=30)).isoformat()}).json()
+        reminders(self.app);reminders(self.app)
+        with connection(self.app) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM deadline_deliveries').fetchone()[0],1)
+        self.client.patch('/api/tasks/'+task['id'],json={'status':'Done'});reminders(self.app)
+        with connection(self.app) as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM deadline_deliveries').fetchone()[0],1)
+        self.arjun.put('/api/me/notification-preferences',json={'assignments':False,'reminders':False})
+        self.assertFalse(self.arjun.get('/api/me/notification-preferences').json()['reminders'])
+        bad=self.arjun.post('/api/me/push-subscriptions',json={'endpoint':'https://127.0.0.1/internal','keys':{'auth':'x','p256dh':'y'}});self.assertEqual(bad.status_code,422)
+    def test_provider_failure_retry_and_planned_restart(self):
+        rid=self.queue()
+        async def fail(*a):raise ValueError('provider failed')
+        with patch('backend.personal.propose',fail):asyncio.run(process_one(self.app,self.app.state.work_service))
+        self.assertEqual(self.client.get('/api/me/ai/runs/'+rid).json()['status'],'failed')
+        self.client.post('/api/me/ai/runs/'+rid+'/retry');self.process(self.plan());self.assertEqual(len(self.arjun.get('/api/me/tasks').json()['tasks']),1)
+        rid=self.queue('planned-restart')
+        with connection(self.app) as c:c.execute("UPDATE personal_runs SET status='planned',plan=?,sources=? WHERE id=?",(json.dumps(self.plan()),'["packaging"]',rid))
+        restart=create_app(self.path,None);asyncio.run(process_one(restart,restart.state.work_service))
+        self.assertEqual(len(self.arjun.get('/api/me/tasks').json()['tasks']),2)
+    def test_provider_context_isolation(self):
+        self.client.post('/api/spaces/digital/orders',json={'name':'SECRET DIGITAL','quantity':1})
+        self.client.post('/api/spaces/packaging/orders',json={'name':'PUBLIC PACKAGING','quantity':1})
+        captured=[]
+        class Response:
+            status_code=200
+            def json(self):return {'choices':[{'message':{'content':json.dumps({'answer':'Scoped answer','actions':[]})}}]}
+        class Client:
+            def __init__(self,**k):pass
+            async def __aenter__(self):return self
+            async def __aexit__(self,*a):pass
+            async def post(self,*a,**k):captured.append(k['json']);return Response()
+        self.queue(question='Find SECRET PUBLIC',space='packaging')
+        with patch.dict(os.environ,{'GROQ_API_KEY':'test'}),patch('backend.personal.httpx.AsyncClient',Client):asyncio.run(process_one(self.app,self.app.state.work_service))
+        content=captured[0]['messages'][1]['content'];self.assertNotIn('SECRET DIGITAL',content);self.assertIn('PUBLIC PACKAGING',content);self.assertEqual(captured[0]['response_format'],{'type':'json_object'})
+        self.assertNotIn('password',content)
+
+    def test_evening_example_uses_six_pm_and_notifies_once(self):
+        class Clock(datetime):
+            @classmethod
+            def now(cls,tz=None):
+                value=cls(2030,1,2,9,0,tzinfo=timezone.utc)
+                return value.astimezone(tz) if tz else value.replace(tzinfo=None)
+        self.queue(question='Hi Arjun, can you make an Instagram post for this evening for the event?')
+        with patch('backend.personal.datetime',Clock):self.process(self.plan())
+        task=self.arjun.get('/api/me/tasks').json()['tasks'][0]
+        self.assertEqual(datetime.fromisoformat(task['due_at']).hour,12)
+        self.assertEqual(datetime.fromisoformat(task['due_at']).minute,30)
+        result=self.client.get('/api/me/ai/runs/request-1234').json()['result']
+        self.assertIn('6 PM',result['answer'])
+        self.assertEqual(result['actions'][0]['assignee'],'Arjun')
+
+    def test_push_expired_subscription_and_stale_reminder(self):
+        import sys,types
+        endpoint='https://web.push.apple.com/device-test'
+        subscription={'endpoint':endpoint,'keys':{'auth':'test-auth','p256dh':'test-key'}}
+        self.assertEqual(self.arjun.post('/api/me/push-subscriptions',json=subscription).status_code,201)
+        self.client.post('/api/spaces/packaging/tasks',json={'title':'Push task','assignee_id':self.arjun_id})
+        class Expired(Exception):
+            response=types.SimpleNamespace(status_code=410)
+        transport=types.ModuleType('pywebpush');transport.WebPushException=Expired
+        def send(**kwargs):raise Expired()
+        transport.webpush=send
+        with patch.dict(sys.modules,{'pywebpush':transport}),patch.dict(os.environ,{'VAPID_PRIVATE_KEY':'test-key','VAPID_SUBJECT':'mailto:test@example.com'}):deliver_one(self.app)
+        with connection(self.app) as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM push_subscriptions').fetchone()[0],0)
+            self.assertEqual(c.execute('SELECT status FROM notification_jobs').fetchone()[0],'expired')
+        self.arjun.post('/api/me/push-subscriptions',json=subscription)
+        task=self.client.post('/api/spaces/packaging/tasks',json={'title':'Reminder','assignee_id':self.arjun_id,'due_at':(datetime.now(timezone.utc)+timedelta(minutes=20)).isoformat()}).json()
+        reminders(self.app)
+        self.client.patch('/api/tasks/'+task['id'],json={'due_at':(datetime.now(timezone.utc)+timedelta(days=2)).isoformat()})
+        # Suppress the assignment so the next eligible delivery is the old reminder.
+        with connection(self.app) as c:c.execute("UPDATE notification_jobs SET status='sent' WHERE notification_id IN (SELECT id FROM notifications WHERE title!='Task deadline reminder')")
+        calls=[];transport.webpush=lambda **kwargs:calls.append(kwargs)
+        with patch.dict(sys.modules,{'pywebpush':transport}):deliver_one(self.app)
+        self.assertEqual(calls,[])
+        with connection(self.app) as c:self.assertEqual(c.execute("SELECT status FROM notification_jobs WHERE notification_id IN (SELECT id FROM notifications WHERE title='Task deadline reminder')").fetchone()[0],'suppressed')
+
+    def test_groq_invalid_json_retries_once(self):
+        calls=[]
+        class Response:
+            def __init__(self, status): self.status_code=status
+            def json(self):
+                if self.status_code==400:
+                    return {'error':{'code':'json_validate_failed','failed_generation':'PRIVATE TEXT'}}
+                return {'choices':[{'message':{'content':json.dumps({'answer':'Recovered','actions':[]})}}]}
+        class Client:
+            def __init__(self,**kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self,*args): pass
+            async def post(self,*args,**kwargs):
+                calls.append(dict(kwargs['json']))
+                return Response(400 if len(calls)==1 else 200)
+        self.queue(question='What needs attention?')
+        with patch.dict(os.environ,{'GROQ_API_KEY':'test'}),patch('backend.personal.httpx.AsyncClient',Client):
+            asyncio.run(process_one(self.app,self.app.state.work_service))
+        self.assertEqual(len(calls),2)
+        self.assertEqual(calls[1]['temperature'],0)
+
+    def test_personal_combines_sources_but_shared_generation_is_scoped(self):
+        self.client.post('/api/spaces/digital/orders',json={'name':'PRIVATE DIGITAL CONTENT','quantity':1})
+        self.client.post('/api/spaces/packaging/orders',json={'name':'PACKAGING CONTENT','quantity':1})
+        captured=[];plan=self.plan()
+        class Response:
+            status_code=200
+            def json(self):return {'choices':[{'message':{'content':json.dumps(plan)}}]}
+        class Client:
+            def __init__(self,**kwargs):pass
+            async def __aenter__(self):return self
+            async def __aexit__(self,*args):pass
+            async def post(self,*args,**kwargs):captured.append(kwargs['json']);return Response()
+        self.queue(question='Search CONTENT then create task in Packaging studio for Arjun',space=None)
+        with patch.dict(os.environ,{'GROQ_API_KEY':'test'}),patch('backend.personal.httpx.AsyncClient',Client):asyncio.run(process_one(self.app,self.app.state.work_service))
+        self.assertEqual(len(captured),2)
+        self.assertIn('PRIVATE DIGITAL CONTENT',captured[0]['messages'][1]['content'])
+        self.assertNotIn('PRIVATE DIGITAL CONTENT',captured[1]['messages'][1]['content'])
+        self.assertIn('PACKAGING CONTENT',captured[1]['messages'][1]['content'])
+        self.assertEqual(json.loads(captured[1]['messages'][1]['content'])['private_history'],[])
+
+    def test_workspace_membership_management_preserves_other_spaces(self):
+        created=self.client.post('/api/admin/spaces',json={'name':'Events','description':'Event team'})
+        self.assertEqual(created.status_code,201)
+        space=created.json()['id']
+        self.assertIn(space,[w['id'] for w in self.client.get('/api/me/workspaces').json()])
+        members={'member_ids':[self.user['id'],self.arjun_id]}
+        self.assertEqual(self.arjun.put('/api/admin/spaces/'+space+'/members',json=members).status_code,403)
+        self.assertEqual(self.client.put('/api/admin/spaces/'+space+'/members',json=members).status_code,200)
+        self.assertEqual(set(w['id'] for w in self.arjun.get('/api/me/workspaces').json()),{'packaging',space})
+        invalid=self.client.put('/api/admin/spaces/'+space+'/members',json={'member_ids':['missing-account']})
+        self.assertEqual(invalid.status_code,400)
+        self.assertEqual(self.arjun.get('/api/spaces/'+space+'/work').status_code,200)
+        self.client.put('/api/admin/spaces/'+space+'/members',json={'member_ids':[self.user['id']]})
+        self.assertEqual(self.arjun.get('/api/spaces/'+space+'/work').status_code,403)
+        self.assertEqual(self.arjun.get('/api/spaces/packaging/work').status_code,200)
+
+    def test_server_starts_and_stops_embedded_worker(self):
+        import threading
+        started=threading.Event();stopped=threading.Event()
+        async def worker(app):
+            started.set()
+            try:await asyncio.sleep(60)
+            finally:stopped.set()
+        with patch.dict(os.environ,{'COLLECTIVE_TEST':'false','EMBEDDED_WORKER':'true'}),patch('backend.worker.run_worker',worker):
+            with TestClient(self.app) as client:
+                self.assertTrue(started.wait(2))
+                self.assertEqual(client.get('/api/health').status_code,200)
+            self.assertTrue(stopped.wait(2))
+
+if __name__=='__main__':unittest.main()
