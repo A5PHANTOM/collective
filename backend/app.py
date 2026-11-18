@@ -308,15 +308,24 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
     @app.middleware('http')
     async def security(request,call_next):
         origin=request.headers.get('origin')
-        if request.method not in ('GET','HEAD','OPTIONS') and origin and origin != str(request.base_url).rstrip('/'):
-            # Vite development requests originate at the frontend's port.
+        if request.method not in ('GET','HEAD','OPTIONS') and origin:
+            # Build normalized effective origin considering reverse proxies (Vercel, etc.)
+            proto = request.headers.get('x-forwarded-proto') or request.url.scheme
+            host = request.headers.get('x-forwarded-host') or request.headers.get('host') or request.url.netloc
+            effective_base = f"{proto}://{host}".rstrip('/')
+            base_url = str(request.base_url).rstrip('/')
+
             allowed_origins = {
+                effective_base,
+                base_url,
                 os.environ.get('DEV_ORIGIN'),
                 'http://127.0.0.1:5173',
                 'http://localhost:5173',
             }
-            if origin not in allowed_origins:
-                return JSONResponse({'detail':'Invalid request origin'},403)
+            if origin != base_url and origin != effective_base and origin not in allowed_origins:
+                # Also accept matching vercel.app domains and subdomains
+                if not (origin.endswith('.vercel.app') and (host.endswith('.vercel.app') or host in origin)):
+                    return JSONResponse({'detail':'Invalid request origin'},403)
         length=request.headers.get('content-length')
         if length and (not length.isdigit() or int(length)>3_200_000):
             return JSONResponse({'detail':'Request too large'},413)
