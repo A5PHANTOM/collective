@@ -257,4 +257,76 @@ class PersonalTests(unittest.TestCase):
                 self.assertEqual(client.get('/api/health').status_code,200)
             self.assertTrue(stopped.wait(2))
 
+    def test_serverless_inline_processing_when_embedded_worker_disabled(self):
+        plan = {'answer': 'Hello! How can I help you today?', 'actions': []}
+        async def fake_propose(*args, **kwargs):
+            return plan, ['packaging']
+        with patch.dict(os.environ, {'COLLECTIVE_TEST': 'false', 'EMBEDDED_WORKER': 'false'}), patch('backend.personal.propose', fake_propose):
+            r = self.client.post('/api/me/ai/runs', json={
+                'request_id': 'inline-run-1',
+                'conversation_id': self.cid,
+                'question': 'hi',
+                'space': 'packaging'
+            })
+            self.assertEqual(r.status_code, 202)
+            data = r.json()
+            self.assertEqual(data['status'], 'completed')
+            self.assertIsNotNone(data['result'])
+            self.assertEqual(data['result']['answer'], 'Hello! How can I help you today?')
+
+            # Check run_status
+            status_res = self.client.get('/api/me/ai/runs/inline-run-1').json()
+            self.assertEqual(status_res['status'], 'completed')
+            self.assertEqual(status_res['result']['answer'], 'Hello! How can I help you today?')
+
+            # Check conversation history
+            history = self.client.get('/api/me/conversations/' + self.cid).json()
+            self.assertEqual(len(history), 1)
+            self.assertEqual(history[0]['question'], 'hi')
+            self.assertEqual(history[0]['result']['answer'], 'Hello! How can I help you today?')
+
+    def test_serverless_inline_retry_when_embedded_worker_disabled(self):
+        with connection(self.app) as conn:
+            conn.execute("INSERT INTO personal_runs(id,user_id,conversation_id,space,question,timezone,status,result,created) VALUES (?,?,?,?,?,?,?,?,?)",
+                         ('failed-run-1', self.user['id'], self.cid, 'packaging', 'try again', 'Asia/Kolkata', 'failed', json.dumps({'answer': 'failed', 'actions': []}), '2026-01-01T00:00:00Z'))
+        plan = {'answer': 'Recovered after retry!', 'actions': []}
+        async def fake_propose(*args, **kwargs):
+            return plan, ['packaging']
+        with patch.dict(os.environ, {'COLLECTIVE_TEST': 'false', 'EMBEDDED_WORKER': 'false'}), patch('backend.personal.propose', fake_propose):
+            r = self.client.post('/api/me/ai/runs/failed-run-1/retry')
+            self.assertEqual(r.status_code, 200)
+            data = r.json()
+            self.assertEqual(data['status'], 'completed')
+            self.assertEqual(data['result']['answer'], 'Recovered after retry!')
+
+    def test_transcribe_voice_note_supported_types(self):
+        class FakeClient:
+            def __init__(self, **kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+            async def post(self, *args, **kwargs):
+                class FakeResp:
+                    status_code = 200
+                    def json(self): return {'text': 'Transcribed voice note text'}
+                return FakeResp()
+
+        with patch.dict(os.environ, {'GROQ_API_KEY': 'test-key'}), patch('backend.personal.httpx.AsyncClient', FakeClient):
+            # Test webm
+            r1 = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.webm', b'dummy-audio-bytes', 'audio/webm')})
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r1.json()['text'], 'Transcribed voice note text')
+
+            # Test m4a / audio/mp4 (Safari/iOS)
+            r2 = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.m4a', b'dummy-audio-bytes', 'audio/mp4')})
+            self.assertEqual(r2.status_code, 200)
+            self.assertEqual(r2.json()['text'], 'Transcribed voice note text')
+
+            # Test audio/x-m4a
+            r3 = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.m4a', b'dummy-audio-bytes', 'audio/x-m4a')})
+            self.assertEqual(r3.status_code, 200)
+
+            # Test invalid format
+            r4 = self.client.post('/api/me/ai/transcribe', files={'audio': ('file.exe', b'bad-bytes', 'application/x-msdownload')})
+            self.assertEqual(r4.status_code, 415)
+
 if __name__=='__main__':unittest.main()

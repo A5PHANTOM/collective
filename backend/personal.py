@@ -260,13 +260,13 @@ def finish(app,service,run_id):
         conn.execute("UPDATE personal_runs SET status='completed',result=?,lease=0 WHERE id=?",(json.dumps(result),run_id))
 
 
-async def process_one(app,service):
+async def process_run(app,service,run_id:str):
     with connection(app) as conn:
         conn.execute('BEGIN IMMEDIATE')
-        conn.execute("UPDATE personal_runs SET status='failed',result=? WHERE status='running' AND attempts>=3 AND lease<?",(json.dumps({'answer':'Worker interrupted repeatedly. Retry this request.','actions':[]}),time.time()))
-        run=conn.execute("SELECT * FROM personal_runs WHERE status='planned' OR (status IN ('queued','running') AND lease<? AND attempts<3) ORDER BY created LIMIT 1",(time.time(),)).fetchone()
+        run=conn.execute("SELECT * FROM personal_runs WHERE id=?",(run_id,)).fetchone()
         if not run: return False
         run=dict(run)
+        if run['status']=='completed': return True
         if run['status']!='planned':
             conn.execute("UPDATE personal_runs SET status='running',lease=?,attempts=attempts+1 WHERE id=?",(time.time()+120,run['id']))
     try:
@@ -281,14 +281,31 @@ async def process_one(app,service):
     return True
 
 
+async def process_one(app,service):
+    with connection(app) as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        conn.execute("UPDATE personal_runs SET status='failed',result=? WHERE status='running' AND attempts>=3 AND lease<?",(json.dumps({'answer':'Worker interrupted repeatedly. Retry this request.','actions':[]}),time.time()))
+        run=conn.execute("SELECT * FROM personal_runs WHERE status='planned' OR (status IN ('queued','running') AND lease<? AND attempts<3) ORDER BY created LIMIT 1",(time.time(),)).fetchone()
+        if not run: return False
+        run=dict(run)
+    return await process_run(app,service,run['id'])
+
+
 def register_personal(app,current_user,service):
     migrate(app); app.state.work_service=service
 
     @app.post('/api/me/ai/transcribe')
     async def transcribe_voice_note(audio: UploadFile = File(...), user=Depends(current_user)):
         content_type = (audio.content_type or '').split(';', 1)[0].lower()
-        if content_type not in {'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/mpeg'}:
-            raise HTTPException(415, 'This voice note format is not supported.')
+        allowed_types = {
+            'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/mpeg',
+            'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/x-wav', 'video/mp4',
+            'application/octet-stream'
+        }
+        if content_type not in allowed_types:
+            ext = (audio.filename or '').split('.')[-1].lower()
+            if ext not in {'webm', 'mp4', 'm4a', 'ogg', 'wav', 'mp3', 'mpeg', 'aac'}:
+                raise HTTPException(415, f'This voice note format is not supported ({content_type or ext}).')
         content = await audio.read()
         if not content:
             raise HTTPException(422, 'The voice note is empty.')
@@ -302,13 +319,18 @@ def register_personal(app,current_user,service):
                 response = await client.post(
                     'https://api.groq.com/openai/v1/audio/transcriptions',
                     headers={'Authorization': 'Bearer ' + key},
-                    files={'file': (audio.filename or 'voice-note.webm', content, content_type)},
+                    files={'file': (audio.filename or 'voice-note.webm', content, content_type or 'audio/webm')},
                     data={'model': os.environ.get('GROQ_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'), 'response_format': 'json'},
                 )
-        except httpx.HTTPError:
-            raise HTTPException(502, 'Cannot reach the voice transcription service. Try again.') from None
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, f'Cannot reach the voice transcription service: {exc}') from None
         if response.status_code != 200:
-            raise HTTPException(502, 'The voice note could not be transcribed. Try recording it again.')
+            msg = 'The voice note could not be transcribed.'
+            try:
+                err_detail = response.json().get('error', {}).get('message', '')
+                if err_detail: msg += f': {err_detail}'
+            except Exception: pass
+            raise HTTPException(502, msg)
         try:
             text = response.json().get('text', '').strip()
         except (ValueError, AttributeError):
@@ -367,7 +389,7 @@ def register_personal(app,current_user,service):
             return [{**dict(r),'result':json.loads(r['result'])} for r in conn.execute('SELECT * FROM private_turns WHERE conversation_id=? ORDER BY rowid',(cid,)) if visible(r['sources'],spaces)]
 
     @app.post('/api/me/ai/runs',status_code=202)
-    def enqueue(payload:RunInput,user=Depends(current_user)):
+    async def enqueue(payload:RunInput,user=Depends(current_user)):
         if not payload.question.strip(): raise HTTPException(422,'Enter a request')
         with connection(app) as conn:
             conn.execute('BEGIN IMMEDIATE')
@@ -382,7 +404,16 @@ def register_personal(app,current_user,service):
                 if (old['user_id'],old['question'],old['conversation_id'],old['space'])!=(user['id'],payload.question,payload.conversation_id,payload.space): raise HTTPException(409,'Request ID already used')
             else:
                 conn.execute('INSERT INTO personal_runs(id,user_id,conversation_id,space,question,timezone,created) VALUES (?,?,?,?,?,?,?)',(payload.request_id,user['id'],payload.conversation_id,payload.space,payload.question,payload.timezone,now()))
-        return {'id':payload.request_id,'status':old['status'] if old else 'queued'}
+
+        # On Vercel / serverless where no background worker exists, process inline immediately
+        if os.environ.get('COLLECTIVE_TEST') != 'true' and (os.environ.get('EMBEDDED_WORKER', 'true').lower() == 'false' or os.environ.get('VERCEL') == '1'):
+            await process_run(app, service, payload.request_id)
+
+        with connection(app) as conn:
+            r = conn.execute('SELECT status, result FROM personal_runs WHERE id=?',(payload.request_id,)).fetchone()
+            status = r['status'] if r else (old['status'] if old else 'queued')
+            res = json.loads(r['result']) if (r and r['result']) else None
+        return {'id':payload.request_id,'status':status,'result':res}
 
     @app.get('/api/me/ai/runs/{rid}')
     def run_status(rid:str,user=Depends(current_user)):
@@ -393,12 +424,18 @@ def register_personal(app,current_user,service):
             return {'id':rid,'status':r['status'],'result':json.loads(r['result']) if r['result'] else None}
 
     @app.post('/api/me/ai/runs/{rid}/retry')
-    def retry(rid:str,user=Depends(current_user)):
+    async def retry(rid:str,user=Depends(current_user)):
         with connection(app) as conn:
             r=conn.execute('SELECT * FROM personal_runs WHERE id=? AND user_id=?',(rid,user['id'])).fetchone()
             if not r or not visible(r['sources'],allowed(conn,user['id'])): raise HTTPException(404,'Run unavailable')
             if r['status']=='failed': conn.execute("UPDATE personal_runs SET status=CASE WHEN plan IS NULL THEN 'queued' ELSE 'planned' END,result=NULL,lease=0,attempts=0 WHERE id=?",(rid,))
-        return {'id':rid}
+        if os.environ.get('COLLECTIVE_TEST') != 'true' and (os.environ.get('EMBEDDED_WORKER', 'true').lower() == 'false' or os.environ.get('VERCEL') == '1'):
+            await process_run(app, service, rid)
+        with connection(app) as conn:
+            r = conn.execute('SELECT status, result FROM personal_runs WHERE id=?',(rid,)).fetchone()
+            status = r['status'] if r else 'queued'
+            res = json.loads(r['result']) if (r and r['result']) else None
+        return {'id':rid,'status':status,'result':res}
 
     @app.post('/api/me/drafts/{draft_id}/save')
     def save_draft(draft_id:str,payload:SaveDraft,user=Depends(current_user)):
@@ -418,7 +455,7 @@ def register_personal(app,current_user,service):
             return [dict(r) for r in conn.execute('SELECT m.*,x.parent_id,x.mentions,x.run_id FROM messages m LEFT JOIN message_meta x ON x.message_id=m.id WHERE m.space=? ORDER BY m.created,m.rowid',(space,))]
 
     @app.post('/api/spaces/{space}/thread',status_code=201)
-    def post_thread(space:str,payload:MentionInput,user=Depends(current_user)):
+    async def post_thread(space:str,payload:MentionInput,user=Depends(current_user)):
         validated=ActionInput(question=payload.text,request_id=payload.request_id,timezone=payload.timezone)
         if not payload.text.strip() or any(m!='AI' for m in payload.mentions): raise HTTPException(422,'Invalid message or mention')
         with connection(app) as conn:
@@ -433,6 +470,8 @@ def register_personal(app,current_user,service):
             if 'AI' in payload.mentions:
                 rid=uid(); conn.execute('INSERT INTO personal_runs(id,user_id,space,parent_id,question,timezone,sources,created) VALUES (?,?,?,?,?,?,?,?)',(rid,user['id'],space,payload.request_id,validated.question,validated.timezone,json.dumps([space]),now()))
             conn.execute('INSERT INTO message_meta VALUES (?,?,?,?)',(payload.request_id,payload.parent_id,json.dumps(payload.mentions),rid))
+        if rid and os.environ.get('COLLECTIVE_TEST') != 'true' and (os.environ.get('EMBEDDED_WORKER', 'true').lower() == 'false' or os.environ.get('VERCEL') == '1'):
+            await process_run(app, service, rid)
         return {'id':payload.request_id,'run_id':rid}
 
     @app.get('/api/me/notification-preferences')
