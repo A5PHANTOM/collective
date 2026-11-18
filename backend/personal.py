@@ -356,7 +356,13 @@ def register_personal(app,current_user,service):
     @app.get('/api/me/conversations/{cid}')
     def history(cid:str,user=Depends(current_user)):
         with connection(app) as conn:
-            if not conn.execute('SELECT 1 FROM private_conversations WHERE id=? AND user_id=?',(cid,user['id'])).fetchone(): raise HTTPException(404,'Conversation not found')
+            # Check ownership: conversation belonging to another user is 404
+            row = conn.execute('SELECT user_id FROM private_conversations WHERE id=?',(cid,)).fetchone()
+            if row and row['user_id'] != user['id']:
+                raise HTTPException(404,'Conversation not found')
+            if not row:
+                # If non-existent (e.g. fresh serverless container or client-generated ID), auto-create
+                conn.execute('INSERT OR IGNORE INTO private_conversations VALUES (?,?,?)',(cid,user['id'],now()))
             spaces=allowed(conn,user['id'])
             return [{**dict(r),'result':json.loads(r['result'])} for r in conn.execute('SELECT * FROM private_turns WHERE conversation_id=? ORDER BY rowid',(cid,)) if visible(r['sources'],spaces)]
 
@@ -366,7 +372,11 @@ def register_personal(app,current_user,service):
         with connection(app) as conn:
             conn.execute('BEGIN IMMEDIATE')
             if payload.space: check_space(conn,user,payload.space)
-            if not conn.execute('SELECT 1 FROM private_conversations WHERE id=? AND user_id=?',(payload.conversation_id,user['id'])).fetchone(): raise HTTPException(404,'Conversation not found')
+            row = conn.execute('SELECT user_id FROM private_conversations WHERE id=?',(payload.conversation_id,)).fetchone()
+            if row and row['user_id'] != user['id']:
+                raise HTTPException(404,'Conversation not found')
+            if not row:
+                conn.execute('INSERT OR IGNORE INTO private_conversations VALUES (?,?,?)',(payload.conversation_id,user['id'],now()))
             old=conn.execute('SELECT * FROM personal_runs WHERE id=?',(payload.request_id,)).fetchone()
             if old:
                 if (old['user_id'],old['question'],old['conversation_id'],old['space'])!=(user['id'],payload.question,payload.conversation_id,payload.space): raise HTTPException(409,'Request ID already used')
