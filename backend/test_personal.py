@@ -329,4 +329,65 @@ class PersonalTests(unittest.TestCase):
             r4 = self.client.post('/api/me/ai/transcribe', files={'audio': ('file.exe', b'bad-bytes', 'application/x-msdownload')})
             self.assertEqual(r4.status_code, 415)
 
+    def test_admin_can_create_workspace_via_ai(self):
+        plan = {
+            'answer': 'I have created the new workspace called termjobs for you.',
+            'actions': [{'tool': 'create_workspace', 'space': None, 'args': {'name': 'termjobs', 'description': 'Workspace for TermJobs'}}]
+        }
+        self.queue('req-create-space', question='Can you create a new workspace called termjobs?')
+        self.process(plan)
+        res = self.client.get('/api/me/ai/runs/req-create-space').json()
+        self.assertEqual(res['status'], 'completed')
+        self.assertEqual(len(res['result']['actions']), 1)
+        self.assertEqual(res['result']['actions'][0]['label'], 'Workspace created')
+        self.assertEqual(res['result']['actions'][0]['title'], 'termjobs')
+
+        # Verify workspace appears in user's workspaces
+        spaces = [w['name'] for w in self.client.get('/api/me/workspaces').json()]
+        self.assertIn('termjobs', spaces)
+
+    def test_propose_allows_create_workspace_without_destination_space(self):
+        plan = {
+            'answer': 'Created termjobs workspace',
+            'actions': [{'tool': 'create_workspace', 'space': None, 'args': {'name': 'termjobs'}}]
+        }
+        class FakeResp:
+            status_code = 200
+            def json(self): return {'choices': [{'message': {'content': json.dumps(plan)}}]}
+        class FakeClient:
+            def __init__(self, **kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+            async def post(self, *args, **kwargs): return FakeResp()
+
+        # Admin has multiple spaces (packaging, digital); multi-workspace checks must not raise Unknown destination workspace
+        with patch.dict(os.environ, {'GROQ_API_KEY': 'test-key'}), patch('backend.personal.httpx.AsyncClient', FakeClient):
+            self.queue('req-propose-space', question='Create workspace termjobs', space=None)
+            asyncio.run(process_one(self.app, self.app.state.work_service))
+            res = self.client.get('/api/me/ai/runs/req-propose-space').json()
+            self.assertEqual(res['status'], 'completed')
+            self.assertEqual(res['result']['actions'][0]['label'], 'Workspace created')
+            self.assertEqual(res['result']['actions'][0]['title'], 'termjobs')
+
+    def test_member_cannot_create_workspace_via_ai(self):
+        # Arjun is a member, not an admin
+        arjun_cid = self.arjun.post('/api/me/conversations').json()['id']
+        self.arjun.post('/api/me/ai/runs', json={
+            'request_id': 'arjun-space-req',
+            'conversation_id': arjun_cid,
+            'question': 'Create workspace test',
+            'space': 'packaging'
+        })
+        plan = {
+            'answer': 'Creating workspace...',
+            'actions': [{'tool': 'create_workspace', 'space': None, 'args': {'name': 'forbidden', 'description': ''}}]
+        }
+        async def fake_propose(*args, **kwargs): return plan, ['packaging']
+        with patch('backend.personal.propose', fake_propose):
+            asyncio.run(process_one(self.app, self.app.state.work_service))
+
+        res = self.arjun.get('/api/me/ai/runs/arjun-space-req').json()
+        self.assertEqual(len(res['result']['failed_actions']), 1)
+        self.assertIn('Only administrators', res['result']['failed_actions'][0]['error'])
+
 if __name__=='__main__':unittest.main()
