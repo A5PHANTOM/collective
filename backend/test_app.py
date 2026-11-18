@@ -144,6 +144,36 @@ class CollectiveTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/spaces/packaging/messages').json()[0]['text'],'Proof approved.')
         self.assertEqual(self.client.get('/data/store.json').status_code,404)
 
+    def test_admin_workspace_list_is_not_limited_to_memberships(self):
+        admin_id=self.client.get('/api/bootstrap').json()['user']['id']
+        space_id=self.client.post('/api/admin/spaces',json={'name':'Admin visible'}).json()['id']
+        with connection(self.app) as conn:
+            conn.execute('DELETE FROM memberships WHERE user_id=? AND space_id=?',(admin_id,space_id))
+        self.assertIn(space_id,[s['id'] for s in self.client.get('/api/me/workspaces').json()])
+        member=self.member()
+        self.assertNotIn(space_id,[s['id'] for s in member.get('/api/me/workspaces').json()])
+
+    def test_delete_workspace_removes_data_and_access(self):
+        admin_id=self.client.get('/api/bootstrap').json()['user']['id']
+        space_id=self.client.post('/api/admin/spaces',json={'name':'Temporary','description':'Temporary space'}).json()['id']
+        order=self.order(space_id)
+        self.assertEqual(self.client.post(f'/api/spaces/{space_id}/messages',json={'text':'Temporary note'}).status_code,201)
+        self.assertEqual(self.client.post(f'/api/spaces/{space_id}/tasks',json={'title':'Temporary task','assignee_id':admin_id}).status_code,201)
+        member=self.member()
+        member_id=member.get('/api/bootstrap').json()['user']['id']
+        self.assertEqual(self.client.put(f'/api/admin/members/{member_id}/access',json={'spaces':[space_id]}).status_code,200)
+        self.assertEqual(member.delete(f'/api/admin/spaces/{space_id}').status_code,403)
+        self.assertEqual(self.client.delete(f'/api/admin/spaces/{space_id}').status_code,200)
+        self.assertEqual(self.client.delete(f'/api/admin/spaces/{space_id}').status_code,404)
+        self.assertNotIn(space_id,[s['id'] for s in self.client.get('/api/bootstrap').json()['spaces']])
+        self.assertEqual(member.get('/api/bootstrap').json()['spaces'],[])
+        self.assertEqual(self.client.get(f'/api/spaces/{space_id}/orders').status_code,404)
+        self.assertEqual(self.client.get(f'/api/spaces/{space_id}/messages').status_code,404)
+        self.assertEqual(self.client.get('/api/orders/'+order['id']).status_code,404)
+        with connection(self.app) as conn:
+            for table,column in [('memberships','space_id'),('orders','space'),('messages','space'),('tasks','space'),('projects','space'),('notifications','space'),('ai_runs','space'),('ai_receipts','space'),('personal_runs','space')]:
+                self.assertEqual(conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {column}=?',(space_id,)).fetchone()[0],0,table)
+
     def test_legacy_migration_is_idempotent_and_preserves_passwords(self):
         legacy=Path(self.temp.name)/'old.json'
         salt='00112233445566778899aabbccddeeff'

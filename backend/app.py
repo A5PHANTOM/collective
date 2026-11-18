@@ -39,6 +39,32 @@ def now():
 def uid():
     return str(uuid.uuid4())
 
+def session_secret():
+    secret=os.environ.get('SESSION_SECRET')
+    if not secret:
+        if os.environ.get('VERCEL')=='1':
+            raise RuntimeError('SESSION_SECRET must be configured on Vercel')
+        secret='local-development-session-secret'
+    return secret.encode()
+
+def signed_session(user_id, expires):
+    identity=base64.urlsafe_b64encode(user_id.encode()).decode().rstrip('=')
+    payload=f'{identity}.{int(expires)}'
+    signature=hmac.new(session_secret(),payload.encode(),hashlib.sha256).hexdigest()
+    return f'{payload}.{signature}'
+
+def session_claims(token):
+    try:
+        payload,signature=token.rsplit('.',1)
+        identity,expires=payload.split('.',1)
+        if not hmac.compare_digest(signature,hmac.new(session_secret(),payload.encode(),hashlib.sha256).hexdigest()):
+            return None
+        if int(expires)<=time.time():
+            return None
+        return base64.urlsafe_b64decode(identity+'='*((4-len(identity)%4)%4)).decode()
+    except (ValueError,TypeError):
+        return None
+
 def password_hash(password, salt):
     # Matches the original Node.js scrypt encoding so existing logins survive migration.
     return hashlib.scrypt(password.encode(), salt=salt.encode(), n=16384, r=8, p=1, dklen=64).hex()
@@ -261,7 +287,12 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
         origin=request.headers.get('origin')
         if request.method not in ('GET','HEAD','OPTIONS') and origin and origin != str(request.base_url).rstrip('/'):
             # Vite development requests originate at the frontend's port.
-            if not (os.environ.get('DEV_ORIGIN') and origin==os.environ['DEV_ORIGIN']):
+            allowed_origins = {
+                os.environ.get('DEV_ORIGIN'),
+                'http://127.0.0.1:5173',
+                'http://localhost:5173',
+            }
+            if origin not in allowed_origins:
                 return JSONResponse({'detail':'Invalid request origin'},403)
         length=request.headers.get('content-length')
         if length and (not length.isdigit() or int(length)>3_200_000):
@@ -278,9 +309,9 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
 
     def current_user(request:Request):
         token=request.cookies.get('session','')
-        digest=hashlib.sha256(token.encode()).hexdigest()
+        email=session_claims(token)
         with connection(app) as conn:
-            user=conn.execute('SELECT users.* FROM users JOIN sessions ON sessions.user_id=users.id WHERE sessions.token=? AND sessions.expires>?',(digest,time.time())).fetchone()
+            user=conn.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone() if email else None
         if not user:
             raise HTTPException(401,'Please sign in')
         return dict(user)
@@ -307,17 +338,14 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
             user=conn.execute('SELECT * FROM users WHERE email=?',(payload.email.strip().lower(),)).fetchone()
             if not user or not hmac.compare_digest(password_hash(payload.password,user['salt']),user['password']):
                 raise HTTPException(401,'Incorrect email or password')
-            token=secrets.token_urlsafe(32)
-            conn.execute('DELETE FROM sessions WHERE expires<?',(time.time(),))
-            conn.execute('INSERT INTO sessions VALUES (?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),user['id'],time.time()+86400*7))
+            expires=time.time()+86400*7
+            token=signed_session(user['email'],expires)
         app.state.login_attempts.pop(key,None)
         response.set_cookie('session',token,httponly=True,samesite='strict',secure=os.environ.get('COOKIE_SECURE')=='true',max_age=86400*7)
         return {'ok':True}
 
     @app.post('/api/logout')
     def logout(request:Request,response:Response):
-        with connection(app) as conn:
-            conn.execute('DELETE FROM sessions WHERE token=?',(hashlib.sha256(request.cookies.get('session','').encode()).hexdigest(),))
         response.delete_cookie('session')
         return {'ok':True}
 
@@ -446,6 +474,37 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
             conn.execute('INSERT INTO spaces VALUES (?,?,?)',(space_id,payload.name.strip(),payload.description))
             conn.execute('INSERT INTO memberships VALUES (?,?)',(user['id'],space_id))
         return {'ok':True,'id':space_id}
+
+    @app.delete('/api/admin/spaces/{space}')
+    def delete_space(space:str,user=Depends(admin_user)):
+        with connection(app) as conn:
+            if not conn.execute('SELECT 1 FROM spaces WHERE id=?',(space,)).fetchone():
+                raise HTTPException(404,'Workspace not found')
+            conn.execute('DELETE FROM notification_jobs WHERE notification_id IN (SELECT id FROM notifications WHERE space=?)',(space,))
+            conn.execute('DELETE FROM notifications WHERE space=?',(space,))
+            conn.execute('DELETE FROM deadline_deliveries WHERE task_id IN (SELECT id FROM tasks WHERE space=?)',(space,))
+            conn.execute('DELETE FROM task_activity WHERE task_id IN (SELECT id FROM tasks WHERE space=?)',(space,))
+            conn.execute('DELETE FROM tasks WHERE space=?',(space,))
+            conn.execute('DELETE FROM projects WHERE space=?',(space,))
+            conn.execute('UPDATE message_meta SET run_id=NULL WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
+            conn.execute('UPDATE message_meta SET parent_id=NULL WHERE parent_id IN (SELECT id FROM messages WHERE space=?)',(space,))
+            conn.execute('UPDATE personal_runs SET parent_id=NULL WHERE parent_id IN (SELECT id FROM messages WHERE space=?)',(space,))
+            conn.execute('DELETE FROM action_receipts WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
+            conn.execute('DELETE FROM task_drafts WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
+            conn.execute('DELETE FROM private_turns WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
+            conn.execute('DELETE FROM personal_runs WHERE space=?',(space,))
+            conn.execute('DELETE FROM message_meta WHERE message_id IN (SELECT id FROM messages WHERE space=?)',(space,))
+            conn.execute('DELETE FROM messages WHERE space=?',(space,))
+            conn.execute('DELETE FROM ai_message_actions WHERE message_id IN (SELECT id FROM ai_messages WHERE space=?)',(space,))
+            conn.execute('DELETE FROM ai_receipts WHERE space=? OR run_id IN (SELECT id FROM ai_runs WHERE space=?)',(space,space))
+            conn.execute('DELETE FROM ai_runs WHERE space=?',(space,))
+            conn.execute('DELETE FROM ai_messages WHERE space=?',(space,))
+            conn.execute('DELETE FROM updates WHERE order_id IN (SELECT id FROM orders WHERE space=?)',(space,))
+            conn.execute('DELETE FROM reminders WHERE order_id IN (SELECT id FROM orders WHERE space=?)',(space,))
+            conn.execute('DELETE FROM orders WHERE space=?',(space,))
+            conn.execute('DELETE FROM memberships WHERE space_id=?',(space,))
+            conn.execute('DELETE FROM spaces WHERE id=?',(space,))
+        return {'ok':True}
 
     @app.put('/api/admin/spaces/{space}/members')
     def workspace_members(space:str,payload:WorkspaceMembers,user=Depends(admin_user)):

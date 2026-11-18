@@ -335,7 +335,9 @@ def register_personal(app,current_user,service):
     @app.get('/api/me/workspaces')
     def my_spaces(user=Depends(current_user)):
         with connection(app) as conn:
-            return [dict(r) for r in conn.execute('SELECT s.* FROM spaces s JOIN memberships m ON m.space_id=s.id WHERE m.user_id=?',(user['id'],))]
+            if user['role']=='admin':
+                return [dict(r) for r in conn.execute('SELECT * FROM spaces ORDER BY rowid')]
+            return [dict(r) for r in conn.execute('SELECT s.* FROM spaces s JOIN memberships m ON m.space_id=s.id WHERE m.user_id=? ORDER BY s.rowid',(user['id'],))]
 
     @app.get('/api/search')
     def find(q:str=Query('',max_length=1000),space:str|None=None,user=Depends(current_user)):

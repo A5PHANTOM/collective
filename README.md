@@ -23,6 +23,27 @@ Do not put the key in chat, browser code, or a `VITE_` variable. The AI screen r
 
 For a dedicated production worker, set `EMBEDDED_WORKER=false` on the web process and run `.venv/bin/python -m backend.worker` under a process supervisor. Both processes must use the same database and AI configuration. Queues and receipts survive restarts.
 
+## Vercel deployment
+
+The repository includes Vercel configuration for the Vite build and the FastAPI ASGI function:
+
+```sh
+npm install
+vercel deploy
+```
+
+Set these server-side environment variables in the Vercel project before using the app:
+
+```dotenv
+GROQ_API_KEY=...
+GROQ_MODEL=llama-3.3-70b-versatile
+COOKIE_SECURE=true
+DATABASE_PATH=/tmp/collective.sqlite3
+EMBEDDED_WORKER=false
+```
+
+Vercel function storage is ephemeral, so the SQLite database is suitable only for a preview or single-instance demo. For production, migrate `DATABASE_PATH` to a durable hosted PostgreSQL or SQLite-compatible service, and run `backend.worker` separately as a durable worker or scheduled queue consumer. Do not upload `.env` or the local database; `.vercelignore` excludes both.
+
 Admins can create a workspace directly from **Workspaces → New workspace**, then select its people under **Members → Save members**. To create accounts, open **People & spaces → Add member**. Member accounts can view workspace members but cannot change access or create workspaces.
 
 For local development, run `npm run backend` and `npm run dev` separately. Set `DEV_ORIGIN=http://localhost:5173` when using that origin. Vite proxies API and PWA files. The production server serves the built frontend at http://localhost:3000. API docs: `/api/docs`.

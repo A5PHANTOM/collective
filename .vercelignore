@@ -1,0 +1,11 @@
+.env
+.env.*
+.venv
+__pycache__
+*.pyc
+data/*.sqlite3
+data/*.sqlite3-*
+data/store.json
+backend/test_*.py
+dist
+node_modules
