@@ -260,7 +260,10 @@ def initialize(app, legacy_path):
         if not legacy:
             conn.executemany('INSERT INTO memberships VALUES (?,?)', [(admin_id, 'packaging'), (admin_id, 'digital')])
         conn.execute("INSERT INTO meta VALUES ('initialized',?)", (now(),))
-    os.chmod(app.state.db_path, 0o600)
+    try:
+        os.chmod(app.state.db_path, 0o600)
+    except OSError:
+        pass
 
 def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
     @asynccontextmanager
@@ -282,15 +285,22 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
     if db_path is None:
         db_path = os.environ.get('DATABASE_PATH')
         if not db_path:
-            candidate = ROOT/'data/collective.sqlite3'
+            bundled = ROOT/'data/collective.sqlite3'
+            tmp_db = Path(tempfile.gettempdir())/'collective.sqlite3'
             try:
+                # Test if project directory is writable
+                candidate = ROOT/'data/collective.sqlite3'
                 candidate.parent.mkdir(parents=True, exist_ok=True)
                 marker = candidate.parent/'.collective-write-test'
                 marker.write_text('writable', encoding='utf-8')
                 marker.unlink()
                 db_path = str(candidate)
             except OSError:
-                db_path = str(Path(tempfile.gettempdir())/'collective.sqlite3')
+                # Serverless (read-only filesystem): copy bundled db to /tmp if not already there
+                if bundled.exists() and not tmp_db.exists():
+                    import shutil
+                    shutil.copy2(bundled, tmp_db)
+                db_path = str(tmp_db)
     app.state.db_path=str(db_path)
     app.state.login_attempts={}
     initialize(app,legacy_path)
