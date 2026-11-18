@@ -40,7 +40,26 @@ function PersonalAI({user,visible,connected,draft,setDraft,open,refresh,embedded
  useEffect(()=>{if(visible&&!embedded)messageInput.current?.focus()},[visible,embedded]);
  const [cid,setCid]=useState(''),[conversations,setConversations]=useState([]),[turns,setTurns]=useState([]),[spaces,setSpaces]=useState([]),[space,setSpace]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[run,setRun]=useState(()=>{try{return JSON.parse(sessionStorage.getItem('collective-run')||'null')}catch{sessionStorage.removeItem('collective-run');return null}}),[draftTarget,setDraftTarget]=useState('');const lock=useRef(false);
  useEffect(()=>{const el=chatHistory.current;if(el&&followLatest.current)el.scrollTop=el.scrollHeight},[turns,run,busy,visible]);
- async function historyLoad(c){setTurns(await api('/me/conversations/'+c))}
+ async function historyLoad(c){
+  try{
+   setTurns(await api('/me/conversations/'+c));
+   setError('');
+  }catch(err){
+   if(err.message==='Conversation not found'){
+    try{
+     const fresh=await api('/me/conversations',{method:'POST'});
+     setCid(fresh.id);
+     setConversations(cs=>[{id:fresh.id,created:new Date().toISOString()},...cs.filter(x=>x.id!==c)]);
+     setTurns([]);
+     setError('');
+    }catch(e2){
+     setError(e2.message);
+    }
+   }else{
+    setError(err.message);
+   }
+  }
+ }
  useEffect(()=>{let active=true;(async()=>{try{const [cs,ss]=await Promise.all([api('/me/conversations'),api('/me/workspaces')]);const c=cs[0]?.id||(await api('/me/conversations',{method:'POST'})).id;if(active){setCid(c);setConversations(cs.length?cs:[{id:c,created:new Date().toISOString()}]);setSpaces(ss);await historyLoad(c)}}catch(e){setError(e.message)}})();return()=>{active=false}},[user.id]);
  useEffect(()=>{if(!visible||!cid)return;const reload=()=>Promise.all([historyLoad(cid),api('/me/workspaces').then(setSpaces)]).catch(e=>{setTurns([]);setError(e.message)});reload();const timer=setInterval(reload,10000);window.addEventListener('focus',reload);return()=>{clearInterval(timer);window.removeEventListener('focus',reload)}},[visible,cid]);
  useEffect(()=>{if(!run)return;let stop=false;let timer;async function poll(){try{const r=await api('/me/ai/runs/'+run.id);if(stop)return;if(r.status==='completed'){await historyLoad(run.cid);setRun(null);sessionStorage.removeItem('collective-run');setBusy(false);lock.current=false;refresh()}else if(r.status==='failed'){setError(r.result?.answer||'Could not complete this request.');setRun(null);sessionStorage.removeItem('collective-run');setBusy(false);lock.current=false}else{setBusy(true);timer=setTimeout(poll,1500)}}catch(e){if(!stop){if(e.message==='Run not found or access changed'||e.message==='Run unavailable'){setRun(null);sessionStorage.removeItem('collective-run');setBusy(false);lock.current=false}else{setError(e.message);setBusy(false);timer=setTimeout(poll,5000)}}}}poll();return()=>{stop=true;clearTimeout(timer)}},[run]);

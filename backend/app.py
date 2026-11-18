@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import sqlite3
+import tempfile
 import time
 import uuid
 from contextlib import contextmanager, asynccontextmanager
@@ -278,7 +279,19 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
 
     app=FastAPI(lifespan=lifespan,title='Collective',docs_url='/api/docs',openapi_url='/api/openapi.json',redoc_url=None)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
-    app.state.db_path=str(db_path or os.environ.get('DATABASE_PATH', ROOT/'data/collective.sqlite3'))
+    if db_path is None:
+        db_path = os.environ.get('DATABASE_PATH')
+        if not db_path:
+            candidate = ROOT/'data/collective.sqlite3'
+            try:
+                candidate.parent.mkdir(parents=True, exist_ok=True)
+                marker = candidate.parent/'.collective-write-test'
+                marker.write_text('writable', encoding='utf-8')
+                marker.unlink()
+                db_path = str(candidate)
+            except OSError:
+                db_path = str(Path(tempfile.gettempdir())/'collective.sqlite3')
+    app.state.db_path=str(db_path)
     app.state.login_attempts={}
     initialize(app,legacy_path)
 
