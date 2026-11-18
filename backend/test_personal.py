@@ -390,4 +390,31 @@ class PersonalTests(unittest.TestCase):
         self.assertEqual(len(res['result']['failed_actions']), 1)
         self.assertIn('Only administrators', res['result']['failed_actions'][0]['error'])
 
+    def test_admin_receives_all_platform_users_in_context(self):
+        # Register a member with 0 spaces
+        self.client.post('/api/admin/members', json={'name': 'Unassigned Member', 'email': 'unassigned@example.com', 'password': 'pass', 'spaces': []})
+        captured = []
+        class FakeClient:
+            def __init__(self, **kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+            async def post(self, *args, **kwargs):
+                captured.append(kwargs.get('json'))
+                class FakeResp:
+                    status_code = 200
+                    def json(self): return {'choices': [{'message': {'content': json.dumps({'answer': 'Here are all users.', 'actions': []})}}]}
+                return FakeResp()
+
+        with patch.dict(os.environ, {'GROQ_API_KEY': 'test-key'}), patch('backend.personal.httpx.AsyncClient', FakeClient):
+            self.queue('req-platform-users', question='Show all candidates on the platform', space=None)
+            asyncio.run(process_one(self.app, self.app.state.work_service))
+
+        self.assertEqual(len(captured), 1)
+        user_content = json.loads(captured[0]['messages'][1]['content'])
+        platform_users = user_content['data']['platform_users']
+        user_names = [u['name'] for u in platform_users]
+        self.assertIn('Alex Morgan', user_names)
+        self.assertIn('Arjun', user_names)
+        self.assertIn('Unassigned Member', user_names)
+
 if __name__=='__main__':unittest.main()
