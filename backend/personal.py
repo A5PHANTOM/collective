@@ -143,9 +143,32 @@ async def propose(app, run, destination_pass=False):
             w['members']=[dict(r) for r in conn.execute('SELECT u.id,u.name,u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.space_id=?',(space,))]
             w['projects']=[dict(r) for r in conn.execute('SELECT id,name FROM projects WHERE space=? ORDER BY seq DESC LIMIT 100',(space,))]
             context['workspaces'].append(w)
-        context['attention']=[{**dict(r),'url':'/?task='+r['id']} for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.assignee_id=? AND t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 15",(user['id'],user['id'],run['space'],run['space']))]
-        context['pending_tasks']=[{**dict(r),'url':'/?task='+r['id']} for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 20",(user['id'],run['space'],run['space']))]
-        context['pending_task_count']=conn.execute("SELECT COUNT(*) FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.status!='Done' AND (? IS NULL OR t.space=?)",(user['id'],run['space'],run['space'])).fetchone()[0]
+        now_utc = datetime.now(timezone.utc)
+        def mark_task(r):
+            td = dict(r)
+            td['url'] = '/?task=' + td['id']
+            is_overdue = False
+            if td.get('due_at'):
+                try:
+                    dt = datetime.fromisoformat(td['due_at'].replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    is_overdue = dt < now_utc
+                except Exception:
+                    pass
+            td['is_overdue'] = is_overdue
+            return td
+
+        context['attention'] = [mark_task(r) for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.assignee_id=? AND t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 15",(user['id'],user['id'],run['space'],run['space'])).fetchall()]
+        context['pending_tasks'] = [mark_task(r) for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 20",(user['id'],run['space'],run['space'])).fetchall()]
+        context['pending_task_count'] = conn.execute("SELECT COUNT(*) FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.status!='Done' AND (? IS NULL OR t.space=?)",(user['id'],run['space'],run['space'])).fetchone()[0]
+        context['overdue_tasks'] = [t for t in context['pending_tasks'] if t['is_overdue']]
+        context['overdue_task_count'] = len(context['overdue_tasks'])
+        try:
+            from .worker import reminders
+            reminders(app)
+        except Exception:
+            pass
         history=[]
         if run['conversation_id']:
 
@@ -162,6 +185,10 @@ Formatting instructions for answer:
 - Separate paragraphs with clean double line breaks (\\n\\n).
 - Keep greetings warm, professional, and concise. Never output unescaped raw JSON in the answer string.
 - Provide direct, structured answers with clean headers (### Section) when organizing longer summaries.
+- DEADLINE & OVERDUE NOTIFICATIONS: If any tasks in data.overdue_tasks or data.pending_tasks have is_overdue=true (the deadline has passed without status="Done"):
+  1. ALWAYS bring up an urgent Overdue Notification section right at the top of your answer (e.g. "### ⚠️ Overdue Tasks Notification").
+  2. Explicitly mark each overdue task with **[OVERDUE]**, note who it is assigned to, when its deadline passed, and state that the assigned work has not yet been finished.
+  3. Include a link using [View](/?task=<id>) for every task mentioned.
 
 Actions have tool, space, args. Supported tools: create_task, update_task, create_project, update_project, create_workspace.
 Tool create_workspace: for workspace administrators (requester_role is 'admin'). Args: name (string, required), description (string, optional). For create_workspace, set space to null.

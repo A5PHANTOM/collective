@@ -417,4 +417,29 @@ class PersonalTests(unittest.TestCase):
         self.assertIn('Arjun', user_names)
         self.assertIn('Unassigned Member', user_names)
 
+    def test_overdue_tasks_annotated_in_ai_context(self):
+        past_due = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        self.client.post('/api/spaces/packaging/tasks', json={'title': 'Urgent Overdue Task', 'assignee_id': self.user['id'], 'due_at': past_due})
+        captured = []
+        class FakeClient:
+            def __init__(self, **kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+            async def post(self, *args, **kwargs):
+                captured.append(kwargs.get('json'))
+                class FakeResp:
+                    status_code = 200
+                    def json(self): return {'choices': [{'message': {'content': json.dumps({'answer': 'Overdue tasks alert.', 'actions': []})}}]}
+                return FakeResp()
+
+        with patch.dict(os.environ, {'GROQ_API_KEY': 'test-key'}), patch('backend.personal.httpx.AsyncClient', FakeClient):
+            self.queue('req-overdue-test', question='Are there any overdue tasks?', space=None)
+            asyncio.run(process_one(self.app, self.app.state.work_service))
+
+        self.assertEqual(len(captured), 1)
+        user_content = json.loads(captured[0]['messages'][1]['content'])
+        overdue_tasks = user_content['data']['overdue_tasks']
+        self.assertTrue(any(t['title'] == 'Urgent Overdue Task' and t['is_overdue'] for t in overdue_tasks))
+        self.assertGreaterEqual(user_content['data']['overdue_task_count'], 1)
+
 if __name__=='__main__':unittest.main()
