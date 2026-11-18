@@ -49,7 +49,7 @@ class CollectiveTests(unittest.TestCase):
         self.assertEqual(guest.post('/api/login',json={'email':'admin@gmail.com','password':'wrong'}).status_code,401)
         login=self.login(guest)
         self.assertIn('HttpOnly',login.headers['set-cookie'])
-        self.assertIn('SameSite=strict',login.headers['set-cookie'])
+        self.assertIn('SameSite=lax',login.headers['set-cookie'])
         boot=guest.get('/api/bootstrap').json()
         self.assertNotIn('password',boot['user'])
         self.assertNotIn('salt',boot['user'])

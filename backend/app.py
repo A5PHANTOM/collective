@@ -196,7 +196,7 @@ class SpaceInput(BaseModel):
 class MemberInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     email: str = Field(max_length=254)
-    password: str = Field(min_length=10, max_length=1024)
+    password: str = Field(min_length=4, max_length=1024)
     spaces: list[str] = Field(default_factory=list)
 
 class AccessInput(BaseModel):
@@ -372,7 +372,8 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
             expires=time.time()+86400*7
             token=signed_session(user['email'],expires)
         app.state.login_attempts.pop(key,None)
-        response.set_cookie('session',token,httponly=True,samesite='strict',secure=os.environ.get('COOKIE_SECURE')=='true',max_age=86400*7)
+        is_secure = os.environ.get('COOKIE_SECURE') == 'true' or os.environ.get('VERCEL') == '1' or (request.headers.get('x-forwarded-proto') == 'https')
+        response.set_cookie('session',token,httponly=True,samesite='lax',secure=is_secure,max_age=86400*7)
         return {'ok':True}
 
     @app.post('/api/logout')
