@@ -1,6 +1,6 @@
 import React,{useState,useEffect} from 'react';
 import {Orders,Admin,DeleteWorkspace} from './WorkspaceTools.jsx';
-import {api,useData,Loader,ErrorMessage,Sheet,Icon,iso} from './ui.jsx';
+import {api,useData,Loader,ErrorMessage,Sheet,Icon,iso,datetime} from './ui.jsx';
 import {TaskCard} from './Collective.jsx';
 export default function Workspace({admin,user,open,onAdmin}){
  const {data:spaces,error,reload}=useData('/me/workspaces');
@@ -8,7 +8,7 @@ export default function Workspace({admin,user,open,onAdmin}){
  async function create(e){e.preventDefault();if(busy)return;setBusy(true);setNotice('');try{const result=await api('/admin/spaces',{method:'POST',body:Object.fromEntries(new FormData(e.currentTarget))});await reload();setCreating(false);setSpace(result.id);setTab('members')}catch(e){setNotice(e.message)}finally{setBusy(false)}}
  if(admin)return <Admin notify={setNotice} onChange={reload}/>;
  const current=spaces?.find(s=>s.id===space);
- return <section><ErrorMessage>{error}</ErrorMessage>{!current?<><div className="workspace-page-heading"><div className="day-heading"><span className="eyebrow">GOOD WORK, TOGETHER</span><h1>Workspaces<span>.</span></h1><p>Your people and projects, with room to grow.</p></div>{user.role==='admin'&&<div className="workspace-actions"><button className="button primary" onClick={()=>setCreating(true)}>+ New workspace</button><button className="button" onClick={onAdmin}>People & spaces</button></div>}</div>{user.role!=='admin'&&<p className="workspace-help">An administrator can create workspaces and manage access. Open a workspace’s Members tab to see your team.</p>}<div className="workspace-list">{spaces?.map(s=><article className="workspace-card" key={s.id}><button onClick={()=>{setSpace(s.id);setTab('tasks')}}><span>↗</span><h2>{s.name}</h2><p>{s.description}</p></button>{user.role==='admin'&&<DeleteWorkspace space={s} notify={setNotice} onDeleted={async()=>{if(space===s.id)setSpace('');await reload()}} className="icon-button workspace-delete" ariaLabel={'Delete '+s.name}><Icon name="trash" size={16}/></DeleteWorkspace>}</article>)}</div>{spaces?.length===0&&<p>Ask your administrator to add you to a workspace.</p>}</>:<><button className="text-button" onClick={()=>setSpace('')}>← All workspaces</button><div className="workspace-detail-heading"><h1>{current.name}</h1>{user.role==='admin'&&<DeleteWorkspace space={current} notify={setNotice} onDeleted={async()=>{setSpace('');await reload()}} className="button danger-outline">Delete workspace</DeleteWorkspace>}</div><nav className="workspace-tabs">{['tasks','projects','orders','team','members'].map(t=><button key={t} className={t===tab?'active':''} onClick={()=>setTab(t)}>{t[0].toUpperCase()+t.slice(1)}</button>)}</nav>{tab==='members'?<Members space={space} user={user} onAdmin={onAdmin} onChange={reload}/>:tab==='orders'?<Orders workspace={current} user={user} notify={setNotice} onAI={()=>setTab('team')}/>:tab==='team'?<Channel space={space}/>:<Work key={space+tab} space={current} tab={tab} user={user} open={open}/>}</>}<ErrorMessage>{notice}</ErrorMessage>{creating&&<Sheet title="New workspace" kicker="MAKE ROOM FOR YOUR TEAM" onClose={()=>setCreating(false)}><form className="sheet-body form-fields" onSubmit={create}><label>Workspace name<input name="name" required maxLength={80} placeholder="e.g. Events"/></label><label>Description<textarea name="description" maxLength={200}/></label><p>You’ll join this workspace automatically. Choose its members next.</p><ErrorMessage>{notice}</ErrorMessage><button className="button primary" disabled={busy}>{busy?'Creating…':'Create workspace'}</button></form></Sheet>}</section>;
+ return <section><ErrorMessage>{error}</ErrorMessage>{!current?<><div className="workspace-page-heading"><div className="day-heading"><span className="eyebrow">GOOD WORK, TOGETHER</span><h1>Workspaces<span>.</span></h1><p>Your people and projects, with room to grow.</p></div>{user.role==='admin'&&<div className="workspace-actions"><button className="button primary" onClick={()=>setCreating(true)}>+ New workspace</button><button className="button" onClick={onAdmin}>People & spaces</button></div>}</div>{user.role!=='admin'&&<p className="workspace-help">An administrator can create workspaces and manage access. Open a workspace’s Members tab to see your team.</p>}<div className="workspace-list">{spaces?.map(s=><article className="workspace-card" key={s.id}><button onClick={()=>{setSpace(s.id);setTab('tasks')}}><span>↗</span><h2>{s.name}</h2><p>{s.description}</p></button>{user.role==='admin'&&<DeleteWorkspace space={s} notify={setNotice} onDeleted={async()=>{if(space===s.id)setSpace('');await reload()}} className="icon-button workspace-delete" ariaLabel={'Delete '+s.name}><Icon name="trash" size={16}/></DeleteWorkspace>}</article>)}</div>{spaces?.length===0&&<p>Ask your administrator to add you to a workspace.</p>}</>:<><button className="text-button" onClick={()=>setSpace('')}>← All workspaces</button><div className="workspace-detail-heading"><h1>{current.name}</h1>{user.role==='admin'&&<DeleteWorkspace space={current} notify={setNotice} onDeleted={async()=>{setSpace('');await reload()}} className="button danger-outline">Delete workspace</DeleteWorkspace>}</div><nav className="workspace-tabs">{[['tasks','Tasks'],['projects','Projects'],['history','Task history'],['orders','Orders'],['team','Team'],['members','Members']].map(([k,label])=><button key={k} className={k===tab?'active':''} onClick={()=>setTab(k)}>{label}</button>)}</nav>{tab==='history'?<TaskHistory space={current} user={user} open={open}/>:tab==='members'?<Members space={space} user={user} onAdmin={onAdmin} onChange={reload}/>:tab==='orders'?<Orders workspace={current} user={user} notify={setNotice} onAI={()=>setTab('team')}/>:tab==='team'?<Channel space={space}/>:<Work key={space+tab} space={current} tab={tab} user={user} open={open}/>}</>}<ErrorMessage>{notice}</ErrorMessage>{creating&&<Sheet title="New workspace" kicker="MAKE ROOM FOR YOUR TEAM" onClose={()=>setCreating(false)}><form className="sheet-body form-fields" onSubmit={create}><label>Workspace name<input name="name" required maxLength={80} placeholder="e.g. Events"/></label><label>Description<textarea name="description" maxLength={200}/></label><p>You’ll join this workspace automatically. Choose its members next.</p><ErrorMessage>{notice}</ErrorMessage><button className="button primary" disabled={busy}>{busy?'Creating…':'Create workspace'}</button></form></Sheet>}</section>;
 }
 function Members({space,user,onAdmin,onChange}){
  const admin=user.role==='admin';const {data,error,reload}=useData(admin?'/admin':'/spaces/'+space+'/work');const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -17,3 +17,238 @@ function Members({space,user,onAdmin,onChange}){
 }
 function Work({space,tab,user,open}){const {data,error,reload}=useData('/spaces/'+space.id+'/work');const [creating,setCreating]=useState(false),[failure,setFailure]=useState(''),[busy,setBusy]=useState(false);async function save(e){e.preventDefault();if(busy)return;setBusy(true);const f=Object.fromEntries(new FormData(e.currentTarget));try{await api('/spaces/'+space.id+'/'+tab,{method:'POST',body:{...f,due_at:iso(f.due_at),...(tab==='tasks'?{project_id:f.project_id||null}:{})}});setCreating(false);reload()}catch(e){setFailure(e.message)}finally{setBusy(false)}}return <><button className="button primary" onClick={()=>setCreating(true)}>+ New {tab==='tasks'?'task':'project'}</button><ErrorMessage>{error}</ErrorMessage>{!data?<Loader/>:tab==='tasks'?data.tasks.map(t=><TaskCard key={t.id} task={{...t,workspace_name:space.name}} open={open}/>):data.projects.map(p=><article className="project-card" key={p.id}><h2>{p.name}</h2><p>{p.description}</p><small>{p.done_count} of {p.task_count} tasks complete · {p.status}</small></article>)}{creating&&<Sheet title={'New '+(tab==='tasks'?'task':'project')} kicker={space.name} onClose={()=>setCreating(false)}><form onSubmit={save} className="sheet-body form-fields"><label>{tab==='tasks'?'Task title':'Project name'}<input name={tab==='tasks'?'title':'name'} required maxLength={160}/></label><label>Description<textarea name="description"/></label>{tab==='tasks'&&<><label>Assign to<select name="assignee_id" defaultValue={user.id}>{data.members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Project<select name="project_id"><option value="">No project</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Priority<select name="priority" defaultValue="Medium">{['Low','Medium','High'].map(p=><option key={p}>{p}</option>)}</select></label></>}<label>Deadline<input type="datetime-local" name="due_at"/></label><ErrorMessage>{failure}</ErrorMessage><button className="button primary" disabled={busy}>{busy?'Creating…':'Create '+(tab==='tasks'?'task':'project')}</button></form></Sheet>}</>}
 function Channel({space}){const {data,error,reload}=useData('/spaces/'+space+'/thread');const [text,setText]=useState(()=>sessionStorage.getItem('channel-'+space)||''),[mention,setMention]=useState(false),[parent,setParent]=useState(null),[busy,setBusy]=useState(false),[failure,setFailure]=useState(''),[request,setRequest]=useState(null);useEffect(()=>{const t=setInterval(reload,4000);return()=>clearInterval(t)},[reload]);useEffect(()=>{sessionStorage.setItem('channel-'+space,text)},[space,text]);async function send(e){e.preventDefault();if(busy)return;setBusy(true);const r=request||{request_id:crypto.randomUUID(),text,mentions:mention?['AI']:[],parent_id:parent,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'Asia/Kolkata'};setRequest(r);try{await api('/spaces/'+space+'/thread',{method:'POST',body:r});setText('');setRequest(null);setParent(null);setMention(false);reload()}catch(e){setFailure(e.message)}finally{setBusy(false)}}return <div className="channel"><ErrorMessage>{error||failure}</ErrorMessage><p className="privacy-note">Team conversation · use @AI to ask the workspace assistant</p>{data?.map(m=><article key={m.id} className={'channel-message '+(m.parent_id?'reply':'')}><strong>{m.author}</strong>{m.parent_id&&<small> Reply to {data.find(p=>p.id===m.parent_id)?.author||'message'}</small>}<p>{m.text}</p><button className="text-button" onClick={()=>setParent(m.id)}>Reply</button></article>)}<form className="channel-composer" onSubmit={send}>{parent&&<button type="button" className="text-button" onClick={()=>setParent(null)}>Cancel reply</button>}<textarea aria-label="Team message" value={text} required onChange={e=>{setText(e.target.value);setRequest(null)}} placeholder="Share an update…"/><label className="check-label"><input type="checkbox" checked={mention} onChange={e=>{setMention(e.target.checked);setRequest(null)}}/>@AI · ask using this workspace only</label><button className="button primary" disabled={busy}>{busy?'Sending…':'Send'}</button></form></div>}
+
+function formatDuration(ms){
+ const mins=Math.max(1,Math.round(ms/60000));
+ if(mins<60)return `${mins}m`;
+ const hours=Math.round(mins/60);
+ if(hours<24)return `${hours}h`;
+ const days=Math.round(hours/24);
+ return `${days}d`;
+}
+
+function TaskHistory({space,user,open}){
+ const {data,error,loading,reload}=useData('/spaces/'+space.id+'/work');
+ const [filter,setFilter]=useState('all');
+ const [search,setSearch]=useState('');
+
+ const now=Date.now();
+ const tasks=(data?.tasks||[]).map(t=>{
+  const postedTime=t.created;
+  const deadlineTime=t.due_at;
+  const isDone=t.status==='Done';
+  const finishedTime=isDone?t.updated:null;
+  let missed=false;
+  let statusLabel='';
+  let badgeClass='';
+  let diffDescription='';
+
+  if(isDone){
+   if(deadlineTime){
+    const closedAfter=new Date(t.updated).getTime() - new Date(deadlineTime).getTime();
+    if(closedAfter>60000){
+     missed=true;
+     statusLabel='Deadline missed · Closed late';
+     badgeClass='badge-missed-closed';
+     diffDescription=`Closed ${formatDuration(closedAfter)} after deadline`;
+    }else{
+     statusLabel='Completed on time';
+     badgeClass='badge-completed-ontime';
+     diffDescription='Closed on schedule';
+    }
+   }else{
+    statusLabel='Completed';
+    badgeClass='badge-completed';
+    diffDescription='No deadline set';
+   }
+  }else{
+   if(deadlineTime){
+    const overdue=now - new Date(deadlineTime).getTime();
+    if(overdue>0){
+     missed=true;
+     statusLabel='Deadline missed · Still incomplete';
+     badgeClass='badge-missed-open';
+     diffDescription=`Overdue by ${formatDuration(overdue)}`;
+    }else{
+     statusLabel='In progress';
+     badgeClass='badge-in-progress';
+     diffDescription=`Due in ${formatDuration(-overdue)}`;
+    }
+   }else{
+    statusLabel='In progress';
+    badgeClass='badge-in-progress';
+    diffDescription='No deadline set';
+   }
+  }
+
+  return {
+   ...t,
+   isDone,
+   missed,
+   postedTime,
+   finishedTime,
+   deadlineTime,
+   statusLabel,
+   badgeClass,
+   diffDescription
+  };
+ });
+
+ const totalCount=tasks.length;
+ const missedCount=tasks.filter(t=>t.missed).length;
+ const completedCount=tasks.filter(t=>t.isDone).length;
+ const onTimeDoneCount=tasks.filter(t=>t.isDone&&!t.missed).length;
+ const openCount=tasks.filter(t=>!t.isDone).length;
+ const onTimeRate=totalCount>0?Math.round((tasks.filter(t=>!t.missed).length/totalCount)*100):100;
+
+ const filtered=tasks.filter(t=>{
+  if(filter==='missed'&&!t.missed)return false;
+  if(filter==='completed'&&!t.isDone)return false;
+  if(filter==='open'&&t.isDone)return false;
+  if(search.trim()){
+   const q=search.toLowerCase();
+   const matchTitle=t.title.toLowerCase().includes(q);
+   const matchAssignee=t.assignee_name?.toLowerCase().includes(q);
+   const matchProject=t.project_name?.toLowerCase().includes(q);
+   if(!matchTitle&&!matchAssignee&&!matchProject)return false;
+  }
+  return true;
+ });
+
+ return (
+  <div className="task-history-section">
+   <div className="history-header">
+    <div className="history-title-wrap">
+     <h2>Task History & Audit Log</h2>
+     <p>Chronological record of all assigned tasks, posted times, finished times, and deadline tracking.</p>
+    </div>
+    <button className="button" onClick={reload}><Icon name="clock" size={13}/> Refresh</button>
+   </div>
+
+   <div className="history-metrics-row">
+    <div className="history-metric-card">
+     <span className="metric-num">{totalCount}</span>
+     <span className="metric-label">Total tasks</span>
+    </div>
+    <div className="history-metric-card metric-ontime">
+     <span className="metric-num">{onTimeDoneCount}</span>
+     <span className="metric-label">Completed on time</span>
+    </div>
+    <div className="history-metric-card metric-missed">
+     <span className="metric-num">{missedCount}</span>
+     <span className="metric-label">Deadlines missed</span>
+    </div>
+    <div className="history-metric-card">
+     <span className="metric-num">{onTimeRate}%</span>
+     <span className="metric-label">On-time rate</span>
+    </div>
+   </div>
+
+   <div className="history-controls">
+    <div className="history-filter-chips">
+     <button className={`chip ${filter==='all'?'active':''}`} onClick={()=>setFilter('all')}>All ({totalCount})</button>
+     <button className={`chip chip-missed ${filter==='missed'?'active':''}`} onClick={()=>setFilter('missed')}>Deadlines missed ({missedCount})</button>
+     <button className={`chip ${filter==='completed'?'active':''}`} onClick={()=>setFilter('completed')}>Completed ({completedCount})</button>
+     <button className={`chip ${filter==='open'?'active':''}`} onClick={()=>setFilter('open')}>In progress ({openCount})</button>
+    </div>
+    <div className="history-search">
+     <input
+      type="search"
+      aria-label="Search task history"
+      placeholder="Search by title, assignee, or project…"
+      value={search}
+      onChange={e=>setSearch(e.target.value)}
+     />
+    </div>
+   </div>
+
+   <ErrorMessage>{error}</ErrorMessage>
+   {loading&&<Loader/>}
+
+   {!loading&&filtered.length===0&&(
+    <div className="history-empty">
+     <Icon name="clock" size={24}/>
+     <p>{tasks.length===0?'No tasks recorded in this workspace yet.':'No tasks match your selected filter.'}</p>
+    </div>
+   )}
+
+   <div className="history-task-list">
+    {filtered.map(t=>(
+     <article key={t.id} className={`history-task-card ${t.missed?'card-missed':''} ${t.isDone?'card-done':''}`}>
+      <div className="history-card-top">
+       <div className="history-card-meta-left">
+        <span className="history-task-id">{t.task_id}</span>
+        {t.project_name&&<span className="history-project-pill">{t.project_name}</span>}
+        <span className={`history-priority-pill priority-${t.priority.toLowerCase()}`}>{t.priority} priority</span>
+       </div>
+       <span className={`history-status-badge ${t.badgeClass}`}>
+        {t.statusLabel}
+       </span>
+      </div>
+
+      <h3 className="history-task-title">{t.title}</h3>
+      {t.description&&<p className="history-task-desc">{t.description}</p>}
+
+      <div className="history-assignment-row">
+       <span className="assignment-item">
+        <strong>Assigned to:</strong> {t.assignee_name||'Unassigned'}
+       </span>
+       {t.creator_name&&<span className="assignment-item">
+        <strong>Posted by:</strong> {t.creator_name}
+       </span>}
+      </div>
+
+      <div className="history-timeline-grid">
+       <div className="timeline-node">
+        <span className="node-icon node-posted"><Icon name="plus" size={12}/></span>
+        <div className="node-info">
+         <span className="node-label">Posted time</span>
+         <span className="node-value">{datetime(t.postedTime)}</span>
+        </div>
+       </div>
+
+       <div className="timeline-node">
+        <span className={`node-icon ${t.deadlineTime?'node-deadline':'node-none'}`}><Icon name="clock" size={12}/></span>
+        <div className="node-info">
+         <span className="node-label">Deadline</span>
+         <span className={`node-value ${t.missed?'val-overdue':''}`}>
+          {t.deadlineTime?datetime(t.deadlineTime):'No deadline'}
+         </span>
+        </div>
+       </div>
+
+       <div className="timeline-node">
+        <span className={`node-icon ${t.isDone?'node-finished':'node-pending'}`}>
+         <Icon name={t.isDone?'check':'arrow'} size={12}/>
+        </span>
+        <div className="node-info">
+         <span className="node-label">Finished time</span>
+         <span className={`node-value ${t.isDone?'val-finished':''}`}>
+          {t.finishedTime?datetime(t.finishedTime):'Not finished yet'}
+         </span>
+        </div>
+       </div>
+      </div>
+
+      {t.diffDescription&&(
+       <div className={`history-callout-bar ${t.missed?'callout-missed':'callout-normal'}`}>
+        <span className="callout-indicator">
+         <Icon name={t.missed?'spark':'check'} size={13}/>
+        </span>
+        <span className="callout-text">
+         {t.missed&&t.isDone&&<strong>Deadline missed: </strong>}
+         {t.missed&&!t.isDone&&<strong>Attention required: </strong>}
+         {t.diffDescription}
+         {t.isDone?` · Final status: Done`:` · Current status: ${t.status}`}
+        </span>
+        <button type="button" className="history-view-btn" onClick={()=>open(t.id)}>
+         View task details →
+        </button>
+       </div>
+      )}
+     </article>
+    ))}
+   </div>
+  </div>
+ );
+}

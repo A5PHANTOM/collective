@@ -218,7 +218,7 @@ class WorkService:
     def snapshot(self, space, user):
         with connection(self.app) as conn:
             check_space(conn,user,space)
-            tasks = [task_dict(r) for r in conn.execute('SELECT tasks.*,users.name AS assignee_name,projects.name AS project_name FROM tasks JOIN users ON users.id=tasks.assignee_id LEFT JOIN projects ON projects.id=tasks.project_id WHERE tasks.space=? ORDER BY CASE tasks.status WHEN \'Done\' THEN 1 ELSE 0 END,tasks.due_at IS NULL,tasks.due_at,tasks.seq DESC',(space,))]
+            tasks = [task_dict(r) for r in conn.execute('SELECT tasks.*,users.name AS assignee_name,creator.name AS creator_name,projects.name AS project_name FROM tasks JOIN users ON users.id=tasks.assignee_id LEFT JOIN users AS creator ON creator.id=tasks.created_by LEFT JOIN projects ON projects.id=tasks.project_id WHERE tasks.space=? ORDER BY CASE tasks.status WHEN \'Done\' THEN 1 ELSE 0 END,tasks.due_at IS NULL,tasks.due_at,tasks.seq DESC',(space,))]
             projects = [project_dict(r) for r in conn.execute('SELECT projects.*,COUNT(tasks.id) AS task_count,COALESCE(SUM(tasks.status=\'Done\'),0) AS done_count FROM projects LEFT JOIN tasks ON projects.id=tasks.project_id WHERE projects.space=? GROUP BY projects.id ORDER BY projects.seq DESC',(space,))]
             members = [dict(r) for r in conn.execute("SELECT DISTINCT users.id,users.name,users.email,users.role FROM users LEFT JOIN memberships ON memberships.user_id=users.id WHERE memberships.space_id=?",(space,))]
             orders = [order_dict(r) for r in conn.execute('SELECT seq,id,name,stage,due,assignee,priority FROM orders WHERE space=? AND stage!=? ORDER BY due IS NULL,due',(space,'Dispatched'))]

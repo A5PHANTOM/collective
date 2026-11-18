@@ -30,22 +30,85 @@
 .ai-chat-page .personal-composer textarea{max-height:100px;resize:none}
 .tasks-page .all-tasks{margin-top:24px}.tasks-page .task-card{padding:18px 22px}.tasks-page .day-heading h1{font-size:42px}
 @media(max-width:700px){
-  /* Eliminate the extra bottom padding from collective-main for the AI page */
+  /* Lock mobile viewport completely: zero elastic bounce, frozen top header */
+  html, body {
+    position: fixed !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  #root, .collective-shell {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Fixed, frozen header - prevents top brown/header area from scrolling or bouncing */
+  .collective-header {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 30 !important;
+    height: calc(52px + env(safe-area-inset-top)) !important;
+    padding: env(safe-area-inset-top) 18px 0 !important;
+    background: #f7f6f0 !important;
+    border-bottom: 1px solid var(--line) !important;
+    touch-action: none !important;
+    overscroll-behavior: none !important;
+    user-select: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+
+  /* Hide redundant profile button on top header on mobile since Profile is in the bottom bar */
+  .collective-header .header-profile-btn {
+    display: none !important;
+  }
+
+  /* Main viewport content area between header and tabs */
+  .collective-main {
+    position: fixed !important;
+    top: calc(52px + env(safe-area-inset-top)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: calc(56px + env(safe-area-inset-bottom)) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    margin-left: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* For AI page specifically, lock collective-main so only private-history scrolls */
   .collective-shell:has(.ai-chat-page:not(.hidden)) .collective-main,
   .collective-main:has(.ai-page) {
     min-height: 0 !important;
     padding-bottom: 0 !important;
+    overflow: hidden !important;
   }
 
   /* Dock the AI chat page directly between the top header and bottom tabs with 0 empty gap */
   .collective-content.ai-page {
-    position: fixed !important;
-    top: 54px !important;
+    position: absolute !important;
+    inset: 0 !important;
+    top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
-    height: auto !important;
-    max-height: none !important;
+    bottom: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
     width: 100% !important;
     max-width: 100% !important;
     padding: 6px 14px 2px !important;
@@ -379,6 +442,73 @@
 
   html[data-keyboard=open] .ai-chat-page .personal-ai .privacy-note {
     display: none !important;
+  }
+
+  /* Perfectly aligned 4-tab mobile bottom navbar */
+  .collective-tabs {
+    position: fixed !important;
+    z-index: 35 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    height: calc(56px + env(safe-area-inset-bottom)) !important;
+    padding: 4px 6px max(4px, env(safe-area-inset-bottom)) !important;
+    background: #f9f8f2f5 !important;
+    border-top: 1px solid #dedfd2 !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+  }
+
+  .collective-tabs .tab-btn {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 44px !important;
+    padding: 2px 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    color: #727a6c !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+  }
+
+  .collective-tabs .tab-icon-wrap {
+    display: grid !important;
+    place-items: center !important;
+    width: 52px !important;
+    height: 28px !important;
+    border-radius: 14px !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    color: inherit !important;
+  }
+
+  .collective-tabs .tab-btn.active .tab-icon-wrap {
+    background: #dce5d3 !important;
+    color: #273b1f !important;
+  }
+
+  .collective-tabs .tab-label {
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    line-height: 1.1 !important;
+    letter-spacing: -0.1px !important;
+    color: #727a6c !important;
+    transition: color 0.15s ease, font-weight 0.15s ease !important;
+  }
+
+  .collective-tabs .tab-btn.active .tab-label {
+    color: #273b1f !important;
+    font-weight: 600 !important;
   }
 }
 
@@ -1224,4 +1354,602 @@
   background: #b5381d;
   border-color: #b5381d;
   color: #ffffff;
+}
+
+/* =========================================================
+   TASK HISTORY & AUDIT LOG (Workspace Detail)
+   ========================================================= */
+.task-history-section {
+  margin-top: 18px;
+  animation: chatFadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.history-title-wrap h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #24351e;
+  margin: 0 0 6px;
+  letter-spacing: -0.4px;
+}
+
+.history-title-wrap p {
+  font-size: 13.5px;
+  color: #6c7564;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.history-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.history-metric-card {
+  background: #ffffff;
+  border: 1px solid #dce2d4;
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 2px 10px rgba(35, 45, 30, 0.03);
+}
+
+.history-metric-card .metric-num {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  color: #263820;
+}
+
+.history-metric-card .metric-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #727a69;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.history-metric-card.metric-ontime .metric-num {
+  color: #3b5e2b;
+}
+
+.history-metric-card.metric-missed {
+  background: #fffafa;
+  border-color: #f2c7bc;
+}
+
+.history-metric-card.metric-missed .metric-num {
+  color: #c03d20;
+}
+
+.history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e3e6da;
+}
+
+.history-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-filter-chips .chip {
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: #f2f5ec;
+  border: 1px solid #d8dfcc;
+  color: #55624b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.history-filter-chips .chip:hover {
+  background: #e8eee0;
+  border-color: #b7c6a5;
+}
+
+.history-filter-chips .chip.active {
+  background: #445c38;
+  border-color: #445c38;
+  color: #ffffff;
+}
+
+.history-filter-chips .chip-missed.active {
+  background: #c03d20;
+  border-color: #c03d20;
+  color: #ffffff;
+}
+
+.history-search {
+  flex: 1 1 240px;
+  max-width: 380px;
+}
+
+.history-search input {
+  width: 100%;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid #d5dec6;
+  background: #ffffff;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.history-empty {
+  padding: 44px 20px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px dashed #d6dcce;
+  border-radius: 16px;
+  color: #798270;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.history-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.history-task-card {
+  background: #ffffff;
+  border: 1px solid #dce3d2;
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: 0 2px 12px rgba(35, 45, 30, 0.03);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+  position: relative;
+}
+
+.history-task-card:hover {
+  border-color: #adbfa0;
+  transform: translateY(-1px);
+}
+
+.history-task-card.card-missed {
+  border-color: #f2c7bd;
+  background: linear-gradient(180deg, #ffffff 0%, #fffcfb 100%);
+}
+
+.history-task-card.card-missed:hover {
+  border-color: #e59d8c;
+}
+
+.history-task-card.card-done {
+  background: #fafbf8;
+}
+
+.history-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.history-card-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.history-task-id {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #637158;
+  background: #eef2e7;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.history-project-pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: #485c3b;
+  background: #e5ecdb;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.history-priority-pill {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #f1f3eb;
+  color: #646d5c;
+}
+
+.history-priority-pill.priority-high {
+  background: #fcece7;
+  color: #b83d20;
+  font-weight: 600;
+}
+
+.history-status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.history-status-badge.badge-completed-ontime {
+  background: #e4eedb;
+  color: #2f5620;
+}
+
+.history-status-badge.badge-missed-closed {
+  background: #fce8e3;
+  color: #b5381d;
+  border: 1px solid #f2c0b4;
+}
+
+.history-status-badge.badge-missed-open {
+  background: #b5381d;
+  color: #ffffff;
+  animation: pulseGlowOverdue 2s infinite ease-in-out;
+}
+
+.history-status-badge.badge-in-progress {
+  background: #edf2e5;
+  color: #4b6240;
+}
+
+.history-status-badge.badge-completed {
+  background: #e6edd9;
+  color: #345823;
+}
+
+.history-task-title {
+  font-size: 16.5px;
+  font-weight: 600;
+  color: #203019;
+  margin: 0 0 6px;
+  letter-spacing: -0.2px;
+}
+
+.history-task-desc {
+  font-size: 13px;
+  color: #6c7564;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.history-assignment-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12.5px;
+  color: #5c6652;
+  margin-bottom: 14px;
+}
+
+.assignment-item strong {
+  color: #27361f;
+  font-weight: 600;
+}
+
+.history-timeline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  background: #f8faf4;
+  border: 1px solid #e2e7d8;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.timeline-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.node-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.node-icon.node-posted {
+  background: #e3ebd8;
+  color: #425e36;
+}
+
+.node-icon.node-deadline {
+  background: #edf0e6;
+  color: #5d6753;
+}
+
+.node-icon.node-none {
+  background: #eeeee5;
+  color: #929988;
+}
+
+.node-icon.node-finished {
+  background: #445c38;
+  color: #ffffff;
+}
+
+.node-icon.node-pending {
+  background: #f2e2d9;
+  color: #a4533b;
+}
+
+.node-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.node-label {
+  font-size: 10.5px;
+  color: #7b8374;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 500;
+}
+
+.node-value {
+  font-size: 12.5px;
+  color: #273520;
+  font-weight: 500;
+}
+
+.node-value.val-overdue {
+  color: #b5381d;
+  font-weight: 600;
+}
+
+.node-value.val-finished {
+  color: #3b5e2b;
+  font-weight: 600;
+}
+
+.history-callout-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.history-callout-bar.callout-missed {
+  background: #fdf2ef;
+  border: 1px solid #f2c7bd;
+  color: #933118;
+}
+
+.history-callout-bar.callout-normal {
+  background: #f3f7ed;
+  border: 1px solid #dbe4d0;
+  color: #3f5d30;
+}
+
+.callout-indicator {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.callout-text {
+  flex: 1 1 auto;
+}
+
+.history-view-btn {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-decoration: underline;
+}
+
+.history-view-btn:hover {
+  opacity: 0.8;
+}
+
+/* =========================================================
+   PROFILE VIEW (Mobile Bottom Nav & Desktop Sidebar)
+   ========================================================= */
+.profile-view-page {
+  animation: chatFadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.profile-hero-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: #ffffff;
+  border: 1px solid #dce3d4;
+  border-radius: 20px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 18px rgba(35, 45, 30, 0.04);
+}
+
+.profile-avatar-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #445c38 0%, #2f4325 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(45, 65, 35, 0.2);
+}
+
+.profile-hero-details h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #213219;
+  margin: 0 0 4px;
+  letter-spacing: -0.4px;
+}
+
+.profile-hero-email {
+  font-size: 13.5px;
+  color: #6b7462;
+  margin: 0 0 10px;
+}
+
+.profile-role-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.role-badge.role-admin {
+  background: #e8f0df;
+  color: #355823;
+  border: 1px solid #cfe0c0;
+}
+
+.role-badge.role-member {
+  background: #eff2ea;
+  color: #556249;
+}
+
+.role-badge.role-ai {
+  background: #f4efe6;
+  color: #7a582c;
+  border: 1px solid #e7dcce;
+}
+
+.profile-admin-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #f7faf2;
+  border: 1px solid #d6decb;
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+
+.admin-card-copy h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #293d20;
+  margin: 0 0 4px;
+}
+
+.admin-card-copy p {
+  font-size: 13px;
+  color: #65715a;
+  margin: 0;
+}
+
+.profile-logout-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #ecd5ce;
+  border-radius: 16px;
+  padding: 18px 24px;
+  margin-top: 28px;
+}
+
+.profile-logout-card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #933118;
+  margin: 0 0 3px;
+}
+
+.profile-logout-card p {
+  font-size: 12.5px;
+  color: #7d4d42;
+  margin: 0;
+}
+
+@media(max-width:700px){
+  .history-metrics-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .history-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .history-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .history-search {
+    max-width: 100%;
+  }
+  .history-timeline-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-hero-card {
+    padding: 18px;
+    gap: 14px;
+  }
+  .profile-avatar-circle {
+    width: 52px;
+    height: 52px;
+    font-size: 18px;
+  }
+  .profile-admin-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .profile-logout-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
