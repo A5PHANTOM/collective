@@ -50,13 +50,15 @@ def bounded_context(context, history, max_chars=24000):
     context['records']=[{**r,'text':r.get('text','')[:700]} for r in context['records'][:8]]
     context['attention']=[{k:r.get(k) for k in ('id','title','space','assignee_id','due_at','status','url','is_overdue')} for r in context['attention'][:15]]
     context['pending_tasks']=[{k:r.get(k) for k in ('id','title','space','assignee_id','due_at','status','url','is_overdue')} for r in context['pending_tasks'][:20]]
+    if 'team_chat_history' in context:
+        context['team_chat_history'] = [{k: m.get(k) for k in ('author', 'text', 'created')} for m in context['team_chat_history'][:30]]
     history=[{'question':h['question'][:600],'answer':h['result'].get('answer','')[:1000]} for h in history[:4]][::-1]
     context['retrieval_limits']['truncated']=True
     def size(): return len(json.dumps({'data':context,'private_history':history},ensure_ascii=False,separators=(',',':')))
     while size()>max_chars:
         if history: history.pop(0); continue
-        for name in ('records','pending_tasks','attention'):
-            if context[name]: context[name].pop(); break
+        for name in ('records','pending_tasks','attention','team_chat_history'):
+            if context.get(name): context[name].pop(); break
         else:
             # Do not silently lose member IDs used to authorize assignments.
             raise ValueError('Too many workspace details for one request. Select a workspace to narrow the request.')

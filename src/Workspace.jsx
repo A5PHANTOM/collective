@@ -1,7 +1,8 @@
-import React,{useState,useEffect} from 'react';
+import React,{useState,useEffect,useRef} from 'react';
 import {Orders,Admin,DeleteWorkspace} from './WorkspaceTools.jsx';
-import {api,useData,Loader,ErrorMessage,Sheet,Icon,iso,datetime} from './ui.jsx';
+import {api,useData,Loader,ErrorMessage,Sheet,Icon,Avatar,iso,datetime} from './ui.jsx';
 import {TaskCard} from './Collective.jsx';
+import FormattedAnswer from './FormattedAnswer.jsx';
 export default function Workspace({admin,user,open,onAdmin}){
  const {data:spaces,error,reload}=useData('/me/workspaces');
  const {data:adminData,reload:reloadAdmin}=useData(user.role==='admin'?'/admin':null);
@@ -10,7 +11,7 @@ export default function Workspace({admin,user,open,onAdmin}){
  async function create(e){e.preventDefault();if(busy)return;setBusy(true);setNotice('');const fd=new FormData(e.currentTarget);const body={name:fd.get('name'),description:fd.get('description')||'',member_ids:fd.getAll('members')};try{const result=await api('/admin/spaces',{method:'POST',body});await reload();if(reloadAdmin)await reloadAdmin();setCreating(false);setSpace(result.id);setTab('members');setNotice('Workspace created.')}catch(e){setNotice(e.message)}finally{setBusy(false)}}
  if(admin)return <Admin notify={setNotice} onChange={async()=>{await reload();if(reloadAdmin)await reloadAdmin()}} user={user}/>;
  const current=spaces?.find(s=>s.id===space);
- return <section><ErrorMessage>{error}</ErrorMessage>{!current?<><div className="workspace-page-heading"><div className="day-heading"><span className="eyebrow">GOOD WORK, TOGETHER</span><h1>Workspaces<span>.</span></h1><p>Your people and projects, with room to grow.</p></div>{user.role==='admin'&&<div className="workspace-actions"><button className="button primary" onClick={()=>setCreating(true)}>+ New workspace</button><button className="button" onClick={onAdmin}>People & spaces</button></div>}</div>{user.role!=='admin'&&<p className="workspace-help">An administrator can create workspaces and manage access. Open a workspace’s Members tab to see your team.</p>}<div className="workspace-list">{spaces?.map(s=><article className="workspace-card" key={s.id}><button onClick={()=>{setSpace(s.id);setTab('tasks')}}><span>↗</span><h2>{s.name}</h2><p>{s.description}</p></button>{user.role==='admin'&&<DeleteWorkspace space={s} notify={setNotice} onDeleted={async()=>{if(space===s.id)setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="icon-button workspace-delete" ariaLabel={'Delete '+s.name}><Icon name="trash" size={16}/></DeleteWorkspace>}</article>)}</div>{spaces?.length===0&&<p>Ask your administrator to add you to a workspace.</p>}</>:<><button className="text-button" onClick={()=>setSpace('')}>← All workspaces</button><div className="workspace-detail-heading"><h1>{current.name}</h1>{user.role==='admin'&&<DeleteWorkspace space={current} notify={setNotice} onDeleted={async()=>{setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="button danger-outline">Delete workspace</DeleteWorkspace>}</div><nav className="workspace-tabs">{[['tasks','Tasks'],['projects','Projects'],['history','Task history'],['orders','Orders'],['team','Team'],['members','Members']].map(([k,label])=><button key={k} className={k===tab?'active':''} onClick={()=>setTab(k)}>{label}</button>)}</nav>{tab==='history'?<TaskHistory space={current} user={user} open={open}/>:tab==='members'?<Members space={space} user={user} onAdmin={onAdmin} onChange={reload}/>:tab==='orders'?<Orders workspace={current} user={user} notify={setNotice} onAI={()=>setTab('team')}/>:tab==='team'?<Channel space={space}/>:<Work key={space+tab} space={current} tab={tab} user={user} open={open}/>}</>}{notice&&<div className="toast" role="status" onClick={()=>setNotice('')}>{notice}</div>}{creating&&<Sheet title="New workspace" kicker="MAKE ROOM FOR YOUR TEAM" onClose={()=>setCreating(false)}><form className="sheet-body form-fields" onSubmit={create}><label>Workspace name<input name="name" required maxLength={80} placeholder="e.g. Events"/></label><label>Description<textarea name="description" maxLength={200} placeholder="What will your team work on here?"/></label>{adminData?.users?.length>1&&<fieldset><legend>Add team members</legend><p className="helper">Select members to include in this workspace. You will be added automatically.</p><div style={{maxHeight:'160px',overflowY:'auto',display:'grid',gap:'8px'}}>{adminData.users.filter(u=>u.id!==user.id).map(u=><label className="check-label" key={u.id}><input type="checkbox" name="members" value={u.id}/><span><strong>{u.name}</strong> <small>({u.email})</small></span></label>)}</div></fieldset>}<ErrorMessage>{notice}</ErrorMessage><button className="button primary" disabled={busy}>{busy?'Creating…':'Create workspace'}</button></form></Sheet>}</section>;
+ return <section><ErrorMessage>{error}</ErrorMessage>{!current?<><div className="workspace-page-heading"><div className="day-heading"><span className="eyebrow">GOOD WORK, TOGETHER</span><h1>Workspaces<span>.</span></h1><p>Your people and projects, with room to grow.</p></div>{user.role==='admin'&&<div className="workspace-actions"><button className="button primary" onClick={()=>setCreating(true)}>+ New workspace</button><button className="button" onClick={onAdmin}>People & spaces</button></div>}</div>{user.role!=='admin'&&<p className="workspace-help">An administrator can create workspaces and manage access. Open a workspace’s Members tab to see your team.</p>}<div className="workspace-list">{spaces?.map(s=><article className="workspace-card" key={s.id}><button onClick={()=>{setSpace(s.id);setTab('tasks')}}><span>↗</span><h2>{s.name}</h2><p>{s.description}</p></button>{user.role==='admin'&&<DeleteWorkspace space={s} notify={setNotice} onDeleted={async()=>{if(space===s.id)setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="icon-button workspace-delete" ariaLabel={'Delete '+s.name}><Icon name="trash" size={16}/></DeleteWorkspace>}</article>)}</div>{spaces?.length===0&&<p>Ask your administrator to add you to a workspace.</p>}</>:<><button className="text-button" onClick={()=>setSpace('')}>← All workspaces</button><div className="workspace-detail-heading"><h1>{current.name}</h1>{user.role==='admin'&&<DeleteWorkspace space={current} notify={setNotice} onDeleted={async()=>{setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="button danger-outline">Delete workspace</DeleteWorkspace>}</div><nav className="workspace-tabs">{[['tasks','Tasks'],['projects','Projects'],['history','Task history'],['orders','Orders'],['team','Team'],['members','Members']].map(([k,label])=><button key={k} className={k===tab?'active':''} onClick={()=>setTab(k)}>{label}</button>)}</nav>{tab==='history'?<TaskHistory space={current} user={user} open={open}/>:tab==='members'?<Members space={space} user={user} onAdmin={onAdmin} onChange={reload}/>:tab==='orders'?<Orders workspace={current} user={user} notify={setNotice} onAI={()=>setTab('team')}/>:tab==='team'?<Channel space={current||{id:space,name:'team'}} user={user} open={open}/>:<Work key={space+tab} space={current} tab={tab} user={user} open={open}/>}</>}{notice&&<div className="toast" role="status" onClick={()=>setNotice('')}>{notice}</div>}{creating&&<Sheet title="New workspace" kicker="MAKE ROOM FOR YOUR TEAM" onClose={()=>setCreating(false)}><form className="sheet-body form-fields" onSubmit={create}><label>Workspace name<input name="name" required maxLength={80} placeholder="e.g. Events"/></label><label>Description<textarea name="description" maxLength={200} placeholder="What will your team work on here?"/></label>{adminData?.users?.length>1&&<fieldset><legend>Add team members</legend><p className="helper">Select members to include in this workspace. You will be added automatically.</p><div style={{maxHeight:'160px',overflowY:'auto',display:'grid',gap:'8px'}}>{adminData.users.filter(u=>u.id!==user.id).map(u=><label className="check-label" key={u.id}><input type="checkbox" name="members" value={u.id}/><span><strong>{u.name}</strong> <small>({u.email})</small></span></label>)}</div></fieldset>}<ErrorMessage>{notice}</ErrorMessage><button className="button primary" disabled={busy}>{busy?'Creating…':'Create workspace'}</button></form></Sheet>}</section>;
 }
 function Members({space,user,onAdmin,onChange}){
  const admin=user.role==='admin';const {data,error,reload}=useData(admin?'/admin':'/spaces/'+space+'/work');const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -118,7 +119,335 @@ function Work({space,tab,user,open}){
   </Sheet>}
  </>;
 }
-function Channel({space}){const {data,error,reload}=useData('/spaces/'+space+'/thread');const [text,setText]=useState(()=>sessionStorage.getItem('channel-'+space)||''),[mention,setMention]=useState(false),[parent,setParent]=useState(null),[busy,setBusy]=useState(false),[failure,setFailure]=useState(''),[request,setRequest]=useState(null);useEffect(()=>{const t=setInterval(reload,4000);return()=>clearInterval(t)},[reload]);useEffect(()=>{sessionStorage.setItem('channel-'+space,text)},[space,text]);async function send(e){e.preventDefault();if(busy)return;setBusy(true);const r=request||{request_id:crypto.randomUUID(),text,mentions:mention?['AI']:[],parent_id:parent,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'Asia/Kolkata'};setRequest(r);try{await api('/spaces/'+space+'/thread',{method:'POST',body:r});setText('');setRequest(null);setParent(null);setMention(false);reload()}catch(e){setFailure(e.message)}finally{setBusy(false)}}return <div className="channel"><ErrorMessage>{error||failure}</ErrorMessage><p className="privacy-note">Team conversation · use @AI to ask the workspace assistant</p>{data?.map(m=><article key={m.id} className={'channel-message '+(m.parent_id?'reply':'')}><strong>{m.author}</strong>{m.parent_id&&<small> Reply to {data.find(p=>p.id===m.parent_id)?.author||'message'}</small>}<p>{m.text}</p><button className="text-button" onClick={()=>setParent(m.id)}>Reply</button></article>)}<form className="channel-composer" onSubmit={send}>{parent&&<button type="button" className="text-button" onClick={()=>setParent(null)}>Cancel reply</button>}<textarea aria-label="Team message" value={text} required onChange={e=>{setText(e.target.value);setRequest(null)}} placeholder="Share an update…"/><label className="check-label"><input type="checkbox" checked={mention} onChange={e=>{setMention(e.target.checked);setRequest(null)}}/>@AI · ask using this workspace only</label><button className="button primary" disabled={busy}>{busy?'Sending…':'Send'}</button></form></div>}
+function Channel({space,user,open}){
+ const spaceId = space?.id || space;
+ const spaceName = space?.name || 'Workspace';
+ const {data,error,reload} = useData('/spaces/'+spaceId+'/thread');
+ const [text,setText] = useState(()=>sessionStorage.getItem('channel-'+spaceId)||'');
+ const [mention,setMention] = useState(false);
+ const [parent,setParent] = useState(null);
+ const [busy,setBusy] = useState(false);
+ const [failure,setFailure] = useState('');
+ const [aiThinking,setAiThinking] = useState(false);
+ const messagesEndRef = useRef(null);
+ const textareaRef = useRef(null);
+
+ useEffect(()=>{
+  const interval = setInterval(async ()=>{
+   if(document.visibilityState==='visible'){
+    await reload();
+   }
+  }, aiThinking ? 1200 : 3000);
+  return ()=>clearInterval(interval);
+ }, [reload, aiThinking]);
+
+ useEffect(()=>{
+  if(!data || !data.length) return;
+  const lastMsg = data[data.length - 1];
+  if(lastMsg.author === 'Collective AI'){
+   setAiThinking(false);
+  }
+ }, [data]);
+
+ useEffect(()=>{
+  messagesEndRef.current?.scrollIntoView({behavior:'smooth'});
+ }, [data?.length, aiThinking]);
+
+ useEffect(()=>{
+  sessionStorage.setItem('channel-'+spaceId, text);
+ }, [spaceId, text]);
+
+ function insertMention(){
+  if(!text.includes('@AI')){
+   setText(prev => (prev.trim() ? prev + ' @AI ' : '@AI '));
+  }
+  setMention(true);
+  textareaRef.current?.focus();
+ }
+
+ function useChip(prompt){
+  setText(prompt + ' ');
+  setMention(true);
+  textareaRef.current?.focus();
+ }
+
+ async function send(e){
+  if(e) e.preventDefault();
+  const trimmed = text.trim();
+  if(busy || !trimmed) return;
+  setBusy(true);
+  setFailure('');
+
+  const isMention = mention || /(^|\s)@ai\b/i.test(trimmed);
+  if(isMention) setAiThinking(true);
+
+  const payload = {
+   request_id: crypto.randomUUID(),
+   text: trimmed,
+   mentions: isMention ? ['AI'] : [],
+   parent_id: parent,
+   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata'
+  };
+
+  try{
+   await api('/spaces/'+spaceId+'/thread', {method:'POST', body:payload});
+   setText('');
+   setParent(null);
+   setMention(false);
+   await reload();
+  }catch(err){
+   setFailure(err.message);
+   setAiThinking(false);
+  }finally{
+   setBusy(false);
+  }
+ }
+
+ const parentMsg = parent ? data?.find(m=>m.id===parent) : null;
+
+ return (
+  <div className="slack-team-channel">
+   <div className="slack-channel-header">
+    <div className="slack-channel-title-row">
+     <div className="slack-channel-hash">#</div>
+     <div>
+      <div className="slack-channel-name">
+       <strong>{spaceName}</strong>
+       <span className="slack-channel-badge">Team chat</span>
+      </div>
+      <p className="slack-channel-topic">
+       Workspace discussion & updates. Mention <strong>@AI</strong> to ask the AI bot about tasks, deadlines, or chat summary.
+      </p>
+     </div>
+    </div>
+    <div className="slack-channel-tools">
+     <button
+      type="button"
+      className="slack-ask-ai-pill"
+      onClick={insertMention}
+      title="Mention AI bot"
+     >
+      <Icon name="spark" size={14}/>
+      <span>Ask @AI bot</span>
+     </button>
+    </div>
+   </div>
+
+   <ErrorMessage>{error||failure}</ErrorMessage>
+
+   <div className="slack-messages-stream" role="log" aria-label="Team chat messages">
+    <div className="slack-channel-welcome">
+     <div className="slack-welcome-icon">
+      <Icon name="spark" size={24}/>
+     </div>
+     <h3>Welcome to #{spaceName}!</h3>
+     <p>This is the start of the <strong>{spaceName}</strong> team channel. Everyone in this workspace can share updates here, and the <strong>Collective AI Bot</strong> has full context of the chat to answer questions, summarize discussions, or create tasks.</p>
+    </div>
+
+    {data && data.length > 0 && (
+     <div className="slack-date-divider">
+      <span>Conversation</span>
+     </div>
+    )}
+
+    {data?.map(m => {
+     const isBot = m.author === 'Collective AI' || !m.author_id;
+     const isMe = user?.id && m.author_id === user.id;
+     const formattedTime = m.created ? datetime(m.created) : '';
+     const replyTarget = m.parent_id ? data.find(p=>p.id===m.parent_id) : null;
+
+     return (
+      <article
+       key={m.id}
+       className={`slack-msg ${isBot ? 'slack-bot-msg' : ''} ${isMe ? 'is-me' : ''}`}
+      >
+       <div className="slack-msg-gutter">
+        {isBot ? (
+         <div className="slack-bot-avatar" title="Collective AI Bot">
+          <Icon name="spark" size={18}/>
+         </div>
+        ) : (
+         <Avatar name={m.author} small/>
+        )}
+       </div>
+
+       <div className="slack-msg-content">
+        <div className="slack-msg-header">
+         <span className="slack-msg-author">{m.author}</span>
+         {isBot && <span className="slack-bot-tag">BOT</span>}
+         {isMe && <span className="slack-me-tag">you</span>}
+         <span className="slack-msg-time">{formattedTime}</span>
+         {!isBot && (
+          <button
+           type="button"
+           className="slack-reply-btn"
+           onClick={() => { setParent(m.id); textareaRef.current?.focus(); }}
+           title="Reply in thread"
+          >
+           Reply
+          </button>
+         )}
+        </div>
+
+        {replyTarget && (
+         <div className="slack-quoted-reply">
+          <span className="slack-quote-bar"/>
+          <small>
+           Replying to <strong>{replyTarget.author}</strong>: {replyTarget.text.slice(0, 80)}{replyTarget.text.length > 80 ? '…' : ''}
+          </small>
+         </div>
+        )}
+
+        <div className="slack-msg-body">
+         {isBot ? (
+          <FormattedAnswer text={m.text} onOpenTask={open}/>
+         ) : (
+          <p>{renderWithMentions(m.text)}</p>
+         )}
+        </div>
+       </div>
+      </article>
+     );
+    })}
+
+    {aiThinking && (
+     <div className="slack-msg slack-bot-msg slack-thinking-msg">
+      <div className="slack-msg-gutter">
+       <div className="slack-bot-avatar pulsing">
+        <Icon name="spark" size={18}/>
+       </div>
+      </div>
+      <div className="slack-msg-content">
+       <div className="slack-msg-header">
+        <span className="slack-msg-author">Collective AI</span>
+        <span className="slack-bot-tag">BOT</span>
+        <span className="slack-msg-time">just now</span>
+       </div>
+       <div className="slack-thinking-indicator">
+        <span className="thinking-text">Reading team chat & thinking</span>
+        <span className="thinking-dots">
+         <span className="dot dot-1"/>
+         <span className="dot dot-2"/>
+         <span className="dot dot-3"/>
+        </span>
+       </div>
+      </div>
+     </div>
+    )}
+
+    <div ref={messagesEndRef} style={{height: 1}}/>
+   </div>
+
+   <div className="slack-composer-wrap">
+    {parentMsg && (
+     <div className="slack-reply-banner">
+      <div className="slack-reply-info">
+       <Icon name="arrow" size={13}/>
+       <span>Replying to <strong>{parentMsg.author}</strong>: &ldquo;{parentMsg.text.slice(0, 60)}{parentMsg.text.length > 60 ? '…' : ''}&rdquo;</span>
+      </div>
+      <button
+       type="button"
+       className="slack-cancel-reply"
+       onClick={()=>setParent(null)}
+       title="Cancel reply"
+      >
+       <Icon name="close" size={14}/>
+      </button>
+     </div>
+    )}
+
+    <div className="slack-quick-chips">
+     <button
+      type="button"
+      className="slack-chip"
+      onClick={()=>useChip('@AI summarize our team updates')}
+     >
+      <Icon name="spark" size={12}/>
+      <span>@AI summarize updates</span>
+     </button>
+     <button
+      type="button"
+      className="slack-chip"
+      onClick={()=>useChip('@AI what tasks are due or overdue?')}
+     >
+      <Icon name="spark" size={12}/>
+      <span>@AI what is due?</span>
+     </button>
+     <button
+      type="button"
+      className="slack-chip"
+      onClick={()=>useChip('@AI what did the team discuss today?')}
+     >
+      <Icon name="spark" size={12}/>
+      <span>@AI what was discussed?</span>
+     </button>
+    </div>
+
+    <form className="slack-composer-card" onSubmit={send}>
+     <textarea
+      ref={textareaRef}
+      aria-label="Message team channel"
+      value={text}
+      rows={2}
+      required
+      onChange={e => {
+       setText(e.target.value);
+       if(/(^|\s)@ai\b/i.test(e.target.value)) setMention(true);
+      }}
+      onKeyDown={e => {
+       if(e.key === 'Enter' && !e.shiftKey){
+        e.preventDefault();
+        send();
+       }
+      }}
+      placeholder={`Message #${spaceName} · Type @AI to ask the workspace bot…`}
+     />
+
+     <div className="slack-composer-toolbar">
+      <div className="slack-toolbar-left">
+       <button
+        type="button"
+        className={`slack-ai-mention-toggle ${mention || /(^|\s)@ai\b/i.test(text) ? 'active' : ''}`}
+        onClick={() => {
+         if(!mention && !text.includes('@AI')){
+          setText(prev => (prev.trim() ? prev + ' @AI ' : '@AI '));
+         }
+         setMention(prev => !prev);
+         textareaRef.current?.focus();
+        }}
+        title="Toggle AI Bot mention"
+       >
+        <Icon name="spark" size={13}/>
+        <span>@AI</span>
+       </button>
+       <span className="slack-send-hint">Press <strong>Enter ↵</strong> to send, Shift+Enter for new line</span>
+      </div>
+
+      <button
+       type="submit"
+       className="slack-send-button"
+       disabled={busy || !text.trim()}
+       aria-label="Send message"
+      >
+       <Icon name="send" size={15}/>
+      </button>
+     </div>
+    </form>
+   </div>
+  </div>
+ );
+}
+
+function renderWithMentions(text){
+ if(!text) return null;
+ const parts = text.split(/(@AI|@ai)/g);
+ return parts.map((part, i) => {
+  if(/^@ai$/i.test(part)){
+   return <span key={i} className="slack-mention-pill">@AI</span>;
+  }
+  return part;
+ });
+}
 
 function formatDuration(ms){
  const mins=Math.max(1,Math.round(ms/60000));

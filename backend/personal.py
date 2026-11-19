@@ -170,6 +170,17 @@ async def propose(app, run, destination_pass=False):
         context['pending_task_count'] = conn.execute("SELECT COUNT(*) FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.status!='Done' AND (? IS NULL OR t.space=?)",(user['id'],run['space'],run['space'])).fetchone()[0]
         context['overdue_tasks'] = [t for t in context['pending_tasks'] if t['is_overdue']]
         context['overdue_task_count'] = len(context['overdue_tasks'])
+        target_chat_space = run.get('space') or (sources[0] if len(sources) == 1 else None)
+        if target_chat_space:
+            chat_rows = conn.execute(
+                'SELECT author, text, created FROM messages WHERE space=? ORDER BY created DESC, rowid DESC LIMIT 50',
+                (target_chat_space,)
+            ).fetchall()
+            if chat_rows:
+                context['team_chat_history'] = [
+                    {'author': r['author'], 'text': r['text'], 'created': r['created']}
+                    for r in reversed(chat_rows)
+                ]
         try:
             from .worker import reminders
             reminders(app)
@@ -195,6 +206,11 @@ Formatting instructions for answer:
   1. ALWAYS bring up an urgent Overdue Notification section right at the top of your answer (e.g. "### ⚠️ Overdue Tasks Notification").
   2. Explicitly mark each overdue task with **[OVERDUE]**, note who it is assigned to, when its deadline passed, and state that the assigned work has not yet been finished.
   3. Include a link using [View](/?task=<id>) for every task mentioned.
+
+- TEAM CHAT & SLACK BOT ACCESS:
+  data.team_chat_history contains the recent conversation in this workspace channel. You have full access to what teammates have discussed, posted, asked, or updated.
+  - When asked questions about the chat (e.g. "what did [teammate] say?", "summarize our chat updates", "what was discussed about X?"), reference specific teammates and their messages accurately and helpfully.
+  - Act like a smart, proactive Slack bot: answer team inquiries directly in the channel, summarize updates, and execute workspace actions (like creating or updating tasks) requested in the message.
 
 Actions have tool, space, args. Supported tools: create_task, update_task, create_project, update_project, create_workspace, add_workspace_member.
 Tool create_workspace: for workspace administrators (requester_role is 'admin'). Args: name (string, required), description (string, optional), members (list of member names or emails to add to this workspace, optional). For create_workspace, set space to null.
@@ -371,7 +387,8 @@ def finish(app,service,run_id):
             conn.execute('INSERT INTO private_turns VALUES (?,?,?,?,?,?,?)',(uid(),cid,run_id,run['question'],json.dumps(result),run['sources'],now()))
         if run['parent_id']:
             message_id=uid()
-            text=result['answer']+'\n'+'\n'.join(a['label']+': '+a['title'] for a in actions)
+            action_lines = '\n'.join(a['label']+': '+a['title'] for a in actions if a.get('title'))
+            text=(result['answer'] + ('\n\n' + action_lines if action_lines else '')).strip()
             conn.execute('INSERT INTO messages VALUES (?,?,?,?,?,?)',(message_id,run['space'],None,'Collective AI',text,now()))
             conn.execute('INSERT INTO message_meta VALUES (?,?,?,?)',(message_id,run['parent_id'],'[]',run_id))
         conn.execute("UPDATE personal_runs SET status='completed',result=?,lease=0 WHERE id=?",(json.dumps(result),run_id))
@@ -394,7 +411,10 @@ async def process_run(app,service,run_id:str):
         finish(app,service,run['id'])
     except Exception as exc:
         with connection(app) as conn:
-            conn.execute("UPDATE personal_runs SET status='failed',result=?,lease=0 WHERE id=? AND status!='completed'",(json.dumps({'answer':str(exc.detail) if isinstance(exc,HTTPException) else str(exc),'actions':[]}),run['id']))
+            err_text = str(exc.detail) if isinstance(exc,HTTPException) else str(exc)
+            conn.execute("UPDATE personal_runs SET status='failed',result=?,lease=0 WHERE id=? AND status!='completed'",(json.dumps({'answer':err_text,'actions':[]}),run['id']))
+            if run.get('parent_id') and run.get('space'):
+                conn.execute('INSERT INTO messages VALUES (?,?,?,?,?,?)',(uid(),run['space'],None,'Collective AI',f"I ran into an issue processing that: {err_text}",now()))
     return True
 
 
