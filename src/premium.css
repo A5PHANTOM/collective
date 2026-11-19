@@ -2213,3 +2213,359 @@
     align-items: stretch;
   }
 }
+
+/* ==========================================================================
+   Mobile Navigation Drawer & ChatGPT Clean Mobile UI
+   ========================================================================== */
+
+/* Header controls */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-menu-btn {
+  display: none;
+}
+
+.header-newchat-btn {
+  display: none;
+}
+
+/* Mobile Drawer styles (hidden on desktop) */
+.mobile-drawer-backdrop {
+  display: none;
+}
+
+.mobile-drawer {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  /* Hide bottom tabs on mobile: all navigation moves to clean drawer */
+  .collective-tabs {
+    display: none !important;
+  }
+
+  /* Show mobile header buttons */
+  .mobile-menu-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 50% !important;
+    background: #eef1e7 !important;
+    color: #3b4e33 !important;
+    border: none !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    transition: background 0.15s ease !important;
+  }
+
+  .mobile-menu-btn:active {
+    background: #dfe5d6 !important;
+  }
+
+  .header-newchat-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 50% !important;
+    background: #eef1e7 !important;
+    color: #3b4e33 !important;
+    border: none !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    transition: background 0.15s ease !important;
+  }
+
+  .header-newchat-btn:active {
+    background: #dfe5d6 !important;
+  }
+
+  /* Fixed mobile header */
+  .collective-header {
+    height: calc(52px + env(safe-area-inset-top)) !important;
+    padding: env(safe-area-inset-top) 16px 0 !important;
+    background: #f7f6f0 !important;
+    border-bottom: 1px solid var(--line, #e3e3d8) !important;
+  }
+
+  /* Collective main on mobile takes full viewport without bottom tab offset */
+  .collective-main {
+    position: fixed !important;
+    top: calc(52px + env(safe-area-inset-top)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    margin-left: 0 !important;
+    padding: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    min-height: 0 !important;
+  }
+
+  .collective-content.ai-page {
+    position: absolute !important;
+    inset: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 4px 12px max(10px, env(safe-area-inset-bottom)) !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    background: var(--paper, #fffdf7) !important;
+  }
+
+  .ai-chat-page .personal-ai {
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+
+  .ai-chat-page .personal-ai .private-history {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    padding: 8px 4px 16px !important;
+  }
+
+  /* Sleek ChatGPT-style bottom capsule composer */
+  .ai-chat-page .personal-ai .personal-composer {
+    margin: 0 !important;
+    padding: 10px 14px !important;
+    background: #fffefb !important;
+    border: 1px solid #d4dbc9 !important;
+    border-radius: 24px !important;
+    box-shadow: 0 4px 18px rgba(35, 52, 27, 0.08) !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+  }
+
+  .ai-chat-page .personal-ai .personal-composer textarea {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    min-height: 42px !important;
+    max-height: 120px !important;
+    padding: 2px 4px 4px !important;
+    font-size: 15px !important;
+    line-height: 1.4 !important;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    resize: none !important;
+  }
+
+  .ai-chat-page .personal-ai .privacy-note {
+    padding: 4px 0 2px !important;
+    font-size: 10px !important;
+    color: #8c9384 !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Mobile Drawer Backdrop */
+  .mobile-drawer-backdrop {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(22, 28, 20, 0.48) !important;
+    backdrop-filter: blur(5px) !important;
+    -webkit-backdrop-filter: blur(5px) !important;
+    z-index: 100 !important;
+    animation: drawerFadeIn 0.22s ease !important;
+  }
+
+  /* Mobile Drawer Sliding Panel */
+  .mobile-drawer {
+    display: flex !important;
+    flex-direction: column !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: min(310px, 84vw) !important;
+    height: 100dvh !important;
+    background: #fffefb !important;
+    z-index: 101 !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+  }
+
+  .mobile-drawer.open {
+    transform: translateX(0) !important;
+    box-shadow: 14px 0 45px rgba(0, 0, 0, 0.22) !important;
+  }
+
+  .drawer-top {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: max(16px, env(safe-area-inset-top)) 20px 16px !important;
+    border-bottom: 1px solid #ebece2 !important;
+    background: #f7f6ef !important;
+  }
+
+  .drawer-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    font-family: Georgia, serif !important;
+    font-size: 21px !important;
+    color: #273722 !important;
+    font-weight: 500 !important;
+  }
+
+  .drawer-close-btn {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: #eaece3 !important;
+    color: #55624e !important;
+    display: grid !important;
+    place-items: center !important;
+    border: none !important;
+    cursor: pointer !important;
+  }
+
+  .drawer-nav {
+    flex: 1 1 0 !important;
+    overflow-y: auto !important;
+    padding: 18px 14px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .drawer-section-title {
+    font-size: 10px !important;
+    letter-spacing: 1.5px !important;
+    color: #7d8475 !important;
+    padding: 0 12px 8px !important;
+    font-weight: 600 !important;
+  }
+
+  .drawer-nav-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 14px !important;
+    padding: 13px 14px !important;
+    border-radius: 14px !important;
+    color: #4b5745 !important;
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    background: transparent !important;
+    border: none !important;
+    text-align: left !important;
+    width: 100% !important;
+    cursor: pointer !important;
+    position: relative !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+  }
+
+  .drawer-nav-item:active {
+    background: #eff3ea !important;
+  }
+
+  .drawer-nav-item.active {
+    background: #e7eddf !important;
+    color: #24351c !important;
+    font-weight: 600 !important;
+  }
+
+  .drawer-icon-wrap {
+    display: grid !important;
+    place-items: center !important;
+    width: 24px !important;
+    color: inherit !important;
+  }
+
+  .drawer-active-dot {
+    width: 6px !important;
+    height: 6px !important;
+    border-radius: 50% !important;
+    background: #3e5930 !important;
+    margin-left: auto !important;
+  }
+
+  .drawer-footer {
+    padding: 16px 18px max(16px, env(safe-area-inset-bottom)) !important;
+    border-top: 1px solid #ebece2 !important;
+    background: #f8f9f3 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .drawer-user-card {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+
+  .drawer-user-info {
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 0 !important;
+  }
+
+  .drawer-user-info strong {
+    font-size: 14px !important;
+    color: #212c1e !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .drawer-user-info small {
+    font-size: 11.5px !important;
+    color: #6d7667 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .drawer-logout {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 13px !important;
+    color: #a04234 !important;
+    padding: 6px 4px !important;
+    cursor: pointer !important;
+    border: none !important;
+    background: transparent !important;
+    width: fit-content !important;
+  }
+}
+
+@keyframes drawerFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
