@@ -346,6 +346,44 @@ class PersonalTests(unittest.TestCase):
         spaces = [w['name'] for w in self.client.get('/api/me/workspaces').json()]
         self.assertIn('termjobs', spaces)
 
+    def test_admin_can_create_workspace_with_members_via_ai(self):
+        plan = {
+            'answer': 'I have created the Marketing workspace and added Arjun to it.',
+            'actions': [{
+                'tool': 'create_workspace',
+                'space': None,
+                'args': {'name': 'Marketing', 'description': 'Marketing dept', 'members': ['Arjun']}
+            }]
+        }
+        self.queue('req-create-space-members', question='Create workspace Marketing and add Arjun to it')
+        self.process(plan)
+        res = self.client.get('/api/me/ai/runs/req-create-space-members').json()
+        self.assertEqual(res['status'], 'completed')
+        self.assertEqual(len(res['result']['actions']), 1)
+        self.assertIn('Workspace created with Arjun', res['result']['actions'][0]['label'])
+
+        # Verify Arjun can see Marketing in workspaces
+        arjun_spaces = [w['name'] for w in self.arjun.get('/api/me/workspaces').json()]
+        self.assertIn('Marketing', arjun_spaces)
+
+    def test_admin_can_add_workspace_member_via_ai(self):
+        plan = {
+            'answer': 'I have added Arjun to Digital & IT workspace.',
+            'actions': [{
+                'tool': 'add_workspace_member',
+                'space': None,
+                'args': {'workspace': 'Digital & IT', 'member': 'Arjun'}
+            }]
+        }
+        self.queue('req-add-member-space', question='Add Arjun to Digital & IT workspace')
+        self.process(plan)
+        res = self.client.get('/api/me/ai/runs/req-add-member-space').json()
+        self.assertEqual(res['status'], 'completed')
+        self.assertEqual(res['result']['actions'][0]['label'], 'Added to Digital & IT')
+
+        arjun_spaces = [w['name'] for w in self.arjun.get('/api/me/workspaces').json()]
+        self.assertIn('Digital & IT', arjun_spaces)
+
     def test_propose_allows_create_workspace_without_destination_space(self):
         plan = {
             'answer': 'Created termjobs workspace',
@@ -441,5 +479,18 @@ class PersonalTests(unittest.TestCase):
         overdue_tasks = user_content['data']['overdue_tasks']
         self.assertTrue(any(t['title'] == 'Urgent Overdue Task' and t['is_overdue'] for t in overdue_tasks))
         self.assertGreaterEqual(user_content['data']['overdue_task_count'], 1)
+
+    def test_empty_conversation_id_persists_turn_and_history(self):
+        res = self.client.post('/api/me/ai/runs', json={'request_id': 'req-auto-cid', 'conversation_id': '', 'question': 'Hello', 'timezone': 'UTC'})
+        self.assertEqual(res.status_code, 202)
+        asyncio.run(process_one(self.app, self.app.state.work_service))
+        run_data = self.client.get('/api/me/ai/runs/req-auto-cid').json()
+        self.assertEqual(run_data['status'], 'completed')
+        # Check that conversation was created and turn exists in history
+        convs = self.client.get('/api/me/conversations').json()
+        self.assertGreater(len(convs), 0)
+        history = self.client.get('/api/me/conversations/' + convs[0]['id']).json()
+        self.assertGreaterEqual(len(history), 1)
+        self.assertEqual(history[0]['question'], 'Hello')
 
 if __name__=='__main__':unittest.main()

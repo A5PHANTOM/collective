@@ -192,6 +192,7 @@ class MessageInput(BaseModel):
 class SpaceInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     description: str = Field(default='', max_length=200)
+    member_ids: list[str] = Field(default_factory=list)
 
 class MemberInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
@@ -504,7 +505,10 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
         with connection(app) as conn:
             space_id=uid()
             conn.execute('INSERT INTO spaces VALUES (?,?,?)',(space_id,payload.name.strip(),payload.description))
-            conn.execute('INSERT INTO memberships VALUES (?,?)',(user['id'],space_id))
+            all_members = set(payload.member_ids) | {user['id']}
+            for member_id in all_members:
+                if conn.execute('SELECT 1 FROM users WHERE id=?',(member_id,)).fetchone():
+                    conn.execute('INSERT OR IGNORE INTO memberships VALUES (?,?)',(member_id,space_id))
         return {'ok':True,'id':space_id}
 
     @app.delete('/api/admin/spaces/{space}')
@@ -512,30 +516,48 @@ def create_app(db_path=None, legacy_path=ROOT/'data/store.json'):
         with connection(app) as conn:
             if not conn.execute('SELECT 1 FROM spaces WHERE id=?',(space,)).fetchone():
                 raise HTTPException(404,'Workspace not found')
-            conn.execute('DELETE FROM notification_jobs WHERE notification_id IN (SELECT id FROM notifications WHERE space=?)',(space,))
-            conn.execute('DELETE FROM notifications WHERE space=?',(space,))
-            conn.execute('DELETE FROM deadline_deliveries WHERE task_id IN (SELECT id FROM tasks WHERE space=?)',(space,))
-            conn.execute('DELETE FROM task_activity WHERE task_id IN (SELECT id FROM tasks WHERE space=?)',(space,))
-            conn.execute('DELETE FROM tasks WHERE space=?',(space,))
-            conn.execute('DELETE FROM projects WHERE space=?',(space,))
-            conn.execute('UPDATE message_meta SET run_id=NULL WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
-            conn.execute('UPDATE message_meta SET parent_id=NULL WHERE parent_id IN (SELECT id FROM messages WHERE space=?)',(space,))
-            conn.execute('UPDATE personal_runs SET parent_id=NULL WHERE parent_id IN (SELECT id FROM messages WHERE space=?)',(space,))
-            conn.execute('DELETE FROM action_receipts WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
-            conn.execute('DELETE FROM task_drafts WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
-            conn.execute('DELETE FROM private_turns WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)',(space,))
-            conn.execute('DELETE FROM personal_runs WHERE space=?',(space,))
-            conn.execute('DELETE FROM message_meta WHERE message_id IN (SELECT id FROM messages WHERE space=?)',(space,))
-            conn.execute('DELETE FROM messages WHERE space=?',(space,))
-            conn.execute('DELETE FROM ai_message_actions WHERE message_id IN (SELECT id FROM ai_messages WHERE space=?)',(space,))
-            conn.execute('DELETE FROM ai_receipts WHERE space=? OR run_id IN (SELECT id FROM ai_runs WHERE space=?)',(space,space))
-            conn.execute('DELETE FROM ai_runs WHERE space=?',(space,))
-            conn.execute('DELETE FROM ai_messages WHERE space=?',(space,))
-            conn.execute('DELETE FROM updates WHERE order_id IN (SELECT id FROM orders WHERE space=?)',(space,))
-            conn.execute('DELETE FROM reminders WHERE order_id IN (SELECT id FROM orders WHERE space=?)',(space,))
-            conn.execute('DELETE FROM orders WHERE space=?',(space,))
-            conn.execute('DELETE FROM memberships WHERE space_id=?',(space,))
-            conn.execute('DELETE FROM spaces WHERE id=?',(space,))
+            conn.execute('PRAGMA foreign_keys = OFF')
+            try:
+                conn.execute('''
+                    DELETE FROM notification_jobs 
+                    WHERE notification_id IN (
+                        SELECT id FROM notifications 
+                        WHERE space=? OR task_id IN (SELECT id FROM tasks WHERE space=?)
+                    )
+                ''', (space, space))
+                conn.execute('''
+                    DELETE FROM notifications 
+                    WHERE space=? OR task_id IN (SELECT id FROM tasks WHERE space=?)
+                ''', (space, space))
+                conn.execute('DELETE FROM deadline_deliveries WHERE task_id IN (SELECT id FROM tasks WHERE space=?)', (space,))
+                conn.execute('DELETE FROM task_activity WHERE task_id IN (SELECT id FROM tasks WHERE space=?)', (space,))
+                conn.execute('DELETE FROM tasks WHERE space=?', (space,))
+                conn.execute('DELETE FROM projects WHERE space=?', (space,))
+                conn.execute('UPDATE message_meta SET run_id=NULL WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)', (space,))
+                conn.execute('UPDATE message_meta SET parent_id=NULL WHERE parent_id IN (SELECT id FROM messages WHERE space=?)', (space,))
+                conn.execute('UPDATE personal_runs SET parent_id=NULL WHERE parent_id IN (SELECT id FROM messages WHERE space=?)', (space,))
+                conn.execute('DELETE FROM action_receipts WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)', (space,))
+                conn.execute('DELETE FROM task_drafts WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)', (space,))
+                conn.execute('DELETE FROM private_turns WHERE run_id IN (SELECT id FROM personal_runs WHERE space=?)', (space,))
+                conn.execute('DELETE FROM personal_runs WHERE space=?', (space,))
+                conn.execute('DELETE FROM message_meta WHERE message_id IN (SELECT id FROM messages WHERE space=?)', (space,))
+                conn.execute('DELETE FROM messages WHERE space=?', (space,))
+                conn.execute('DELETE FROM ai_message_actions WHERE message_id IN (SELECT id FROM ai_messages WHERE space=?)', (space,))
+                conn.execute('DELETE FROM ai_receipts WHERE space=? OR run_id IN (SELECT id FROM ai_runs WHERE space=?)', (space, space))
+                conn.execute('DELETE FROM ai_runs WHERE space=?', (space,))
+                conn.execute('DELETE FROM ai_messages WHERE space=?', (space,))
+                conn.execute('DELETE FROM updates WHERE order_id IN (SELECT id FROM orders WHERE space=?)', (space,))
+                conn.execute('DELETE FROM reminders WHERE order_id IN (SELECT id FROM orders WHERE space=?)', (space,))
+                conn.execute('DELETE FROM orders WHERE space=?', (space,))
+                conn.execute('DELETE FROM memberships WHERE space_id=?', (space,))
+                conn.execute('DELETE FROM workspace_search WHERE space=?', (space,))
+                conn.execute('DELETE FROM spaces WHERE id=?', (space,))
+            finally:
+                conn.execute('PRAGMA foreign_keys = ON')
+
+            violations = conn.execute('PRAGMA foreign_key_check').fetchall()
+            if violations:
+                raise HTTPException(500, f'Workspace delete violated foreign key constraints: {violations}')
         return {'ok':True}
 
     @app.put('/api/admin/spaces/{space}/members')

@@ -158,7 +158,22 @@ class CollectiveTests(unittest.TestCase):
         space_id=self.client.post('/api/admin/spaces',json={'name':'Temporary','description':'Temporary space'}).json()['id']
         order=self.order(space_id)
         self.assertEqual(self.client.post(f'/api/spaces/{space_id}/messages',json={'text':'Temporary note'}).status_code,201)
-        self.assertEqual(self.client.post(f'/api/spaces/{space_id}/tasks',json={'title':'Temporary task','assignee_id':admin_id}).status_code,201)
+        task_res=self.client.post(f'/api/spaces/{space_id}/tasks',json={'title':'Temporary task','assignee_id':admin_id,'due_at':'2026-12-01T10:00:00Z'})
+        self.assertEqual(task_res.status_code,201)
+        task_id=task_res.json()['id']
+        # Add cross-space notification and personal run referencing this task/space
+        with connection(self.app) as conn:
+            conn.execute('INSERT INTO deadline_deliveries VALUES (?,?,?,?)',(task_id,'2026-12-01T10:00:00Z',admin_id,0))
+            conn.execute('INSERT INTO notifications(id,recipient_id,space,task_id,title,body,created) VALUES (?,?,?,?,?,?,?)',
+                         ('notif-test',admin_id,'digital',task_id,'Notice','Body','2026-11-19T00:00:00Z'))
+            conn.execute('INSERT INTO notification_jobs(id,notification_id,endpoint) VALUES (?,?,?)',
+                         ('job-test','notif-test','https://push.example.com'))
+            conn.execute('INSERT INTO personal_runs(id,user_id,space,question,timezone,status,created) VALUES (?,?,?,?,?,?,?)',
+                         ('run-test',admin_id,space_id,'Test Q','UTC','done','2026-11-19T00:00:00Z'))
+            conn.execute('INSERT INTO action_receipts(id,run_id,ordinal,result) VALUES (?,?,?,?)',
+                         ('rec-test','run-test',1,'{}'))
+            conn.execute('INSERT INTO task_drafts(id,user_id,run_id,text,sources,created) VALUES (?,?,?,?,?,?)',
+                         ('draft-test',admin_id,'run-test','Draft text','[]','2026-11-19T00:00:00Z'))
         member=self.member()
         member_id=member.get('/api/bootstrap').json()['user']['id']
         self.assertEqual(self.client.put(f'/api/admin/members/{member_id}/access',json={'spaces':[space_id]}).status_code,200)
@@ -171,6 +186,7 @@ class CollectiveTests(unittest.TestCase):
         self.assertEqual(self.client.get(f'/api/spaces/{space_id}/messages').status_code,404)
         self.assertEqual(self.client.get('/api/orders/'+order['id']).status_code,404)
         with connection(self.app) as conn:
+            self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
             for table,column in [('memberships','space_id'),('orders','space'),('messages','space'),('tasks','space'),('projects','space'),('notifications','space'),('ai_runs','space'),('ai_receipts','space'),('personal_runs','space')]:
                 self.assertEqual(conn.execute(f'SELECT COUNT(*) FROM {table} WHERE {column}=?',(space_id,)).fetchone()[0],0,table)
 

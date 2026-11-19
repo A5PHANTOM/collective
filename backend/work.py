@@ -59,6 +59,13 @@ class TaskInput(BaseModel):
         if value and value.tzinfo is None: raise ValueError('Include a timezone')
         return value
 
+    @field_validator('project_id', 'order_id')
+    @classmethod
+    def clean_fk(cls, value):
+        if not value or not str(value).strip():
+            return None
+        return str(value).strip()
+
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=240)
     description: str | None = Field(default=None, max_length=6000)
@@ -80,6 +87,13 @@ class TaskUpdate(BaseModel):
     def aware(cls, value):
         if value and value.tzinfo is None: raise ValueError('Include a timezone')
         return value
+
+    @field_validator('project_id', 'order_id')
+    @classmethod
+    def clean_fk(cls, value):
+        if not value or not str(value).strip():
+            return None
+        return str(value).strip()
 
 class ActionInput(BaseModel):
     question: str = Field(min_length=1, max_length=6000)
@@ -163,17 +177,19 @@ class WorkService:
     def create_task(self, space, payload, user):
         with connection(self.app) as conn:
             check_space(conn,user,space)
-            assignee = self.member(conn,payload.assignee_id,space)
+            target_assignee = payload.assignee_id.strip() if payload.assignee_id and payload.assignee_id.strip() else user['id']
+            assignee = self.member(conn,target_assignee,space)
             for name,table in [('project_id','projects'),('order_id','orders')]:
                 reference = getattr(payload,name)
                 if reference and not conn.execute(f'SELECT 1 FROM {table} WHERE id=? AND space=?',(reference,space)).fetchone():
                     raise HTTPException(400,f'{name.replace("_id", "").capitalize()} must belong to this workspace')
             values = payload.model_dump()
+            values['assignee_id'] = assignee['id']
             values['due_at'] = stamp(payload.due_at)
             values.update(id=uid(),space=space,created_by=user['id'],status='To do',created=now(),updated=now())
             conn.execute(f"INSERT INTO tasks({','.join(values)}) VALUES ({','.join('?' for _ in values)})",tuple(values.values()))
             task = task_dict(conn.execute('SELECT * FROM tasks WHERE id=?',(values['id'],)).fetchone())
-            self.notify(conn,payload.assignee_id,space,task['id'],'New task assigned',f"{user['name']} assigned you: {task['title']}")
+            self.notify(conn,assignee['id'],space,task['id'],'New task assigned',f"{user['name']} assigned you: {task['title']}")
             conn.execute('INSERT INTO task_activity VALUES (?,?,?,?,?)',(uid(),task['id'],user['id'],f"Assigned to {assignee['name']}",now()))
         return {**task,'assignee_name':assignee['name'],'notification_created':True}
 

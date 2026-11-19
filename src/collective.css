@@ -73,8 +73,8 @@
 .wa-send-btn{background:#00a884;color:#111b21;margin-left:auto}
 .wa-send-btn:hover{background:#02bd94;color:#111b21;transform:scale(1.05)}
 
-.space-card{position:relative}.space-delete{position:absolute;top:15px;right:15px;color:#a9816c}.space-delete:hover{background:#f6ebe4;color:#92543d}
+.space-card{position:relative}.space-delete{position:absolute;top:15px;right:15px;color:#a9816c;z-index:5;pointer-events:auto;cursor:pointer}.space-delete:hover{background:#f6ebe4;color:#92543d}.space-delete svg{pointer-events:none}
 .button.danger{background:#8b4a35;border-color:#8b4a35;color:#fffaf5}.button.danger:hover{background:#733d2c}
 .button.danger-outline{border-color:#e5cabf;color:#92543d;background:#fdf6f2}.button.danger-outline:hover{background:#f7e9e1}
 .workspace-detail-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:12px 0}.workspace-detail-heading h1{margin:0}
-.workspace-card{position:relative;display:flex}.workspace-card>button{width:100%}.workspace-list .workspace-delete{position:absolute;right:14px;bottom:14px;width:44px;min-height:44px;padding:8px;background:transparent;border:0;border-radius:8px;color:#a9816c}.workspace-list .workspace-delete:hover{background:#f6ebe4;color:#92543d}
+.workspace-card{position:relative;display:flex}.workspace-card>button{width:100%}.workspace-list .workspace-delete{position:absolute;right:14px;bottom:14px;width:44px;min-height:44px;padding:8px;background:transparent;border:0;border-radius:8px;color:#a9816c;z-index:5;pointer-events:auto;cursor:pointer}.workspace-list .workspace-delete:hover{background:#f6ebe4;color:#92543d}.workspace-list .workspace-delete svg{pointer-events:none}
