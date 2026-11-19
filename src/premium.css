@@ -29,6 +29,266 @@
 .ai-chat-page .private-history{flex:1 1 0;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .ai-chat-page .personal-composer textarea{max-height:100px;resize:none}
 .tasks-page .all-tasks{margin-top:24px}.tasks-page .task-card{padding:18px 22px}.tasks-page .day-heading h1{font-size:42px}
+
+@media (min-width: 701px) {
+  /* Full-screen Claude-like desktop layout for AI Chat */
+  .collective-shell.tab-ai {
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .collective-shell.tab-ai .collective-sidebar {
+    height: 100vh !important;
+    height: 100dvh !important;
+  }
+
+  .collective-shell.tab-ai .collective-main {
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100vh !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding-bottom: 0 !important;
+  }
+
+  .collective-shell.tab-ai .collective-header {
+    height: 52px !important;
+    min-height: 52px !important;
+    flex: 0 0 52px !important;
+    padding: 0 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    border-bottom: 1px solid var(--line, #e3e3d8) !important;
+    background: #fbfaf5 !important;
+  }
+
+  .collective-shell.tab-ai .collective-content.ai-page {
+    flex: 1 1 0 !important;
+    height: calc(100vh - 52px) !important;
+    height: calc(100dvh - 52px) !important;
+    max-height: calc(100vh - 52px) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    background: var(--paper, #fffdf7) !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page {
+    flex: 1 1 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai {
+    flex: 1 1 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Compact header on desktop */
+  .collective-shell.tab-ai .ai-chat-page .personal-ai > header {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    max-width: 860px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 16px 28px 6px !important;
+    box-sizing: border-box !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai > header .eyebrow {
+    font-size: 10px !important;
+    letter-spacing: 1.5px !important;
+    color: #6d7765 !important;
+    display: block !important;
+    margin-bottom: 2px !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai h1 {
+    font-size: 26px !important;
+    line-height: 1.2 !important;
+    letter-spacing: -0.8px !important;
+    margin: 0 !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai > header .button {
+    font-size: 12px !important;
+    padding: 8px 14px !important;
+    min-height: 36px !important;
+    border-radius: 10px !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .conversation-picker {
+    flex: 0 0 auto !important;
+    max-width: 860px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 28px 8px !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 12px !important;
+    color: #6a7362 !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .conversation-picker select {
+    border: none !important;
+    background: transparent !important;
+    font-size: 12px !important;
+    color: #43543b !important;
+    font-weight: 500 !important;
+    padding: 4px 8px !important;
+    cursor: pointer !important;
+  }
+
+  /* Full-screen scrollable chat history */
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .private-history {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain !important;
+    padding: 16px 28px 24px !important;
+    max-width: 860px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+    scroll-behavior: smooth !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .private-history.empty-history {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  /* Claude-style message layout */
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .private-turn {
+    padding: 0 0 24px !important;
+    font-size: 15px !important;
+    line-height: 1.7 !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .user-question {
+    max-width: 75% !important;
+    padding: 12px 18px !important;
+    border-radius: 18px 18px 4px 18px !important;
+    background: #e2e8d8 !important;
+    font-size: 14.5px !important;
+    line-height: 1.5 !important;
+    margin: 0 0 16px auto !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .assistant-answer {
+    display: flex !important;
+    gap: 14px !important;
+    align-items: flex-start !important;
+    margin-top: 6px !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .assistant-body {
+    flex: 1 !important;
+    min-width: 0 !important;
+    font-size: 15px !important;
+    line-height: 1.7 !important;
+    color: #262c23 !important;
+  }
+
+  /* Bottom composer dock: Starters + Input + Note */
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .ai-starters {
+    flex: 0 0 auto !important;
+    max-width: 860px !important;
+    width: 100% !important;
+    margin: 0 auto 10px !important;
+    padding: 0 28px !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    gap: 8px !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .personal-composer {
+    flex: 0 0 auto !important;
+    max-width: 860px !important;
+    width: calc(100% - 56px) !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+    padding: 14px 18px 12px !important;
+    background: #fffefb !important;
+    border: 1px solid #d4dbc9 !important;
+    border-radius: 20px !important;
+    box-shadow: 0 6px 24px rgba(40, 56, 31, 0.07) !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .personal-composer textarea {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    min-height: 52px !important;
+    max-height: 180px !important;
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+    border: none !important;
+    outline: none !important;
+    resize: vertical !important;
+    padding: 2px 4px 8px !important;
+    background: transparent !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .composer-scope {
+    min-height: 32px !important;
+    padding: 4px 10px !important;
+    border-radius: 12px !important;
+    background: #edf1e5 !important;
+    font-size: 12px !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .composer-scope select {
+    border: none !important;
+    background: transparent !important;
+    font-size: 12px !important;
+    color: #43543b !important;
+    cursor: pointer !important;
+  }
+
+  .collective-shell.tab-ai .ai-chat-page .personal-ai .privacy-note {
+    flex: 0 0 auto !important;
+    padding: 8px 0 16px !important;
+    margin: 0 !important;
+    text-align: center !important;
+    font-size: 11px !important;
+    color: #8c9384 !important;
+  }
+}
 @media(max-width:700px){
   /* Lock mobile viewport completely: zero elastic bounce, frozen top header */
   html, body {
