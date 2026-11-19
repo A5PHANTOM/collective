@@ -225,12 +225,41 @@ function CreateTaskSheet({user,onClose,onCreated}){
   </Sheet>
  );
 }
-export function TaskCard({task:t,open}){return <button className="task-card" onClick={()=>open(t.id)}><span className={'task-check '+(t.status==='Done'?'done':'')}>{t.status==='Done'&&<Icon name="check" size={14}/>}</span><span className="task-copy"><strong>{t.title}</strong><span className="task-meta">{t.workspace_name&&<span>{t.workspace_name}</span>}<span>{t.assignee_name}</span><span>{t.due_at?datetime(t.due_at):'No deadline'}</span></span><span className="task-tags"><span>{t.status}</span><span className={t.priority==='High'?'priority-high':''}>{t.priority} priority</span></span></span><Icon name="chevron" size={16}/></button>}
+export function TaskCard({task:t,open}){
+ const isDone = t.status === 'Done';
+ const isOverdue = !isDone && t.due_at && new Date(t.due_at).getTime() < Date.now();
+ return (
+  <button className={`task-card ${isOverdue ? 'is-overdue' : ''}`} onClick={()=>open(t.id)}>
+   <span className={`task-check ${isDone ? 'done' : ''} ${isOverdue ? 'overdue' : ''}`}>
+    {isDone && <Icon name="check" size={14}/>}
+   </span>
+   <span className="task-copy">
+    <strong>{t.title}</strong>
+    <span className="task-meta">
+     {t.workspace_name && <span>{t.workspace_name}</span>}
+     {t.assignee_name && <span>{t.assignee_name}</span>}
+     <span className={`task-due-item ${isOverdue ? 'due-overdue' : ''}`}>
+      {isOverdue && <Icon name="clock" size={12}/>}
+      {isOverdue ? `Overdue · ${datetime(t.due_at)}` : (t.due_at ? datetime(t.due_at) : 'No deadline')}
+     </span>
+    </span>
+    <span className="task-tags">
+     {isOverdue && <span className="tag-overdue"><Icon name="clock" size={11}/> Overdue</span>}
+     <span>{t.status}</span>
+     <span className={t.priority==='High'?'priority-high':''}>{t.priority} priority</span>
+    </span>
+   </span>
+   <Icon name="chevron" size={16}/>
+  </button>
+ );
+}
 function TaskSheet({taskId,onClose,onSave}){
  const {data,error,loading,reload}=useData('/tasks/'+taskId);const [busy,setBusy]=useState(false),[failure,setFailure]=useState(''),[members,setMembers]=useState([]);
  useEffect(()=>{if(data?.space)api('/spaces/'+data.space+'/work').then(w=>setMembers(w.members)).catch(e=>setFailure(e.message))},[data?.space]);
  async function save(e){e.preventDefault();if(busy)return;setBusy(true);const f=Object.fromEntries(new FormData(e.currentTarget));try{await api('/tasks/'+taskId,{method:'PATCH',body:{...f,assignee_id:f.assignee_id||undefined,due_at:iso(f.due_at),clear_deadline:!f.due_at}});await reload();onSave()}catch(e){setFailure(e.message)}finally{setBusy(false)}}
- return <Sheet title={data?.title||'Task'} kicker={data?.task_id||'YOUR WORK'} onClose={onClose}><div className="sheet-body"><ErrorMessage>{error||failure}</ErrorMessage>{loading?<Loader/>:data&&<><form className="form-fields" key={data.updated} onSubmit={save}><label>Title<input name="title" defaultValue={data.title} required maxLength={240}/></label><label>Details<textarea name="description" defaultValue={data.description}/></label><label>Status<select name="status" defaultValue={data.status}>{['To do','In progress','Blocked','Done'].map(s=><option key={s}>{s}</option>)}</select></label><label>Assign to<select name="assignee_id" defaultValue={data.assignee_id}>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Priority<select name="priority" defaultValue={data.priority}>{['Low','Medium','High'].map(s=><option key={s}>{s}</option>)}</select></label><label>Deadline<input type="datetime-local" name="due_at" defaultValue={localInput(data.due_at)}/></label><label>Feedback<textarea name="feedback" placeholder="Add an update for your team"/></label><button className="button primary" disabled={busy}>{busy?'Saving…':'Save changes'}</button></form><h3 className="activity-title">Activity</h3>{data.activity.map(a=><article className="task-activity" key={a.id}><strong>{a.actor}</strong><p>{a.description}</p><small>{datetime(a.created)}</small></article>)}</>}</div></Sheet>;
+ const isDone = data?.status === 'Done';
+ const isOverdue = !isDone && data?.due_at && new Date(data.due_at).getTime() < Date.now();
+ return <Sheet title={data?.title||'Task'} kicker={data?.task_id||'YOUR WORK'} onClose={onClose}><div className="sheet-body"><ErrorMessage>{error||failure}</ErrorMessage>{loading?<Loader/>:data&&<><form className="form-fields" key={data.updated} onSubmit={save}><label>Title<input name="title" defaultValue={data.title} required maxLength={240}/></label><label>Details<textarea name="description" defaultValue={data.description}/></label><label>Status<select name="status" defaultValue={data.status}>{['To do','In progress','Blocked','Done'].map(s=><option key={s}>{s}</option>)}</select></label><label>Assign to<select name="assignee_id" defaultValue={data.assignee_id}>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Priority<select name="priority" defaultValue={data.priority}>{['Low','Medium','High'].map(s=><option key={s}>{s}</option>)}</select></label><label className={isOverdue ? 'deadline-label-overdue' : ''}>Deadline {isOverdue && <span className="overdue-text">⚠️ Overdue</span>}<input type="datetime-local" name="due_at" defaultValue={localInput(data.due_at)}/></label><label>Feedback<textarea name="feedback" placeholder="Add an update for your team"/></label><button className="button primary" disabled={busy}>{busy?'Saving…':'Save changes'}</button></form><h3 className="activity-title">Activity</h3>{data.activity.map(a=><article className="task-activity" key={a.id}><strong>{a.actor}</strong><p>{a.description}</p><small>{datetime(a.created)}</small></article>)}</>}</div></Sheet>;
 }
 function ActionCard({action:a,index:i,onOpen,onSave}){
  const [done,setDone]=useState(a.status==='Done');
