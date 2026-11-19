@@ -325,6 +325,11 @@ class PersonalTests(unittest.TestCase):
             r3 = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.m4a', b'dummy-audio-bytes', 'audio/x-m4a')})
             self.assertEqual(r3.status_code, 200)
 
+            # Test wav
+            r_wav = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.wav', b'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00', 'audio/wav')})
+            self.assertEqual(r_wav.status_code, 200)
+            self.assertEqual(r_wav.json()['text'], 'Transcribed voice note text')
+
             # Test invalid format
             r4 = self.client.post('/api/me/ai/transcribe', files={'audio': ('file.exe', b'bad-bytes', 'application/x-msdownload')})
             self.assertEqual(r4.status_code, 415)

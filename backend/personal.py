@@ -413,16 +413,16 @@ def register_personal(app,current_user,service):
 
     @app.post('/api/me/ai/transcribe')
     async def transcribe_voice_note(audio: UploadFile = File(...), user=Depends(current_user)):
-        content_type = (audio.content_type or '').split(';', 1)[0].lower()
+        raw_content_type = (audio.content_type or '').split(';', 1)[0].lower().strip()
         allowed_types = {
             'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/mpeg',
             'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/x-wav', 'video/mp4',
             'application/octet-stream'
         }
-        if content_type not in allowed_types:
-            ext = (audio.filename or '').split('.')[-1].lower()
+        ext = (audio.filename or '').split('.')[-1].lower() if '.' in (audio.filename or '') else ''
+        if raw_content_type not in allowed_types:
             if ext not in {'webm', 'mp4', 'm4a', 'ogg', 'wav', 'mp3', 'mpeg', 'aac'}:
-                raise HTTPException(415, f'This voice note format is not supported ({content_type or ext}).')
+                raise HTTPException(415, f'This voice note format is not supported ({raw_content_type or ext}).')
         content = await audio.read()
         if not content:
             raise HTTPException(422, 'The voice note is empty.')
@@ -431,14 +431,51 @@ def register_personal(app,current_user,service):
         key = os.environ.get('GROQ_API_KEY')
         if not key:
             raise HTTPException(503, 'Voice notes need GROQ_API_KEY configured on the server.')
+
+        is_wav = content.startswith(b'RIFF') and len(content) > 12 and content[8:12] == b'WAVE'
+        is_webm = content.startswith(b'\x1a\x45\xdf\xa3')
+        is_mp4 = (len(content) > 8 and content[4:8] in (b'ftyp', b'moov', b'mdat', b'isom', b'mp42', b'M4A ')) or (len(content) > 12 and b'ftyp' in content[:16])
+        is_ogg = content.startswith(b'OggS')
+        is_mp3 = content.startswith(b'ID3') or (len(content) > 2 and content[0] == 0xff and (content[1] & 0xe0) == 0xe0)
+
+        if is_wav or ext in ('wav', 'x-wav') or 'wav' in raw_content_type:
+            upload_filename = 'voice-note.wav'
+            upload_content_type = 'audio/wav'
+        elif is_mp4 or ext in ('m4a', 'mp4', 'aac') or 'mp4' in raw_content_type or 'm4a' in raw_content_type or 'aac' in raw_content_type:
+            upload_filename = 'voice-note.m4a'
+            upload_content_type = 'audio/m4a'
+        elif is_ogg or ext == 'ogg' or 'ogg' in raw_content_type:
+            upload_filename = 'voice-note.ogg'
+            upload_content_type = 'audio/ogg'
+        elif is_mp3 or ext == 'mp3' or 'mpeg' in raw_content_type:
+            upload_filename = 'voice-note.mp3'
+            upload_content_type = 'audio/mpeg'
+        else:
+            upload_filename = 'voice-note.webm'
+            upload_content_type = 'audio/webm'
+
         try:
             async with provider_client(app) as client:
                 response = await client.post(
                     'https://api.groq.com/openai/v1/audio/transcriptions',
                     headers={'Authorization': 'Bearer ' + key},
-                    files={'file': (audio.filename or 'voice-note.webm', content, content_type or 'audio/webm')},
+                    files={'file': (upload_filename, content, upload_content_type)},
                     data={'model': os.environ.get('GROQ_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'), 'response_format': 'json'},
                 )
+                if response.status_code != 200 and upload_filename == 'voice-note.m4a':
+                    try:
+                        err_text = response.json().get('error', {}).get('message', '')
+                    except Exception:
+                        err_text = ''
+                    if 'valid media file' in err_text or response.status_code == 400:
+                        retry_resp = await client.post(
+                            'https://api.groq.com/openai/v1/audio/transcriptions',
+                            headers={'Authorization': 'Bearer ' + key},
+                            files={'file': ('voice-note.mp4', content, 'audio/mp4')},
+                            data={'model': os.environ.get('GROQ_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'), 'response_format': 'json'},
+                        )
+                        if retry_resp.status_code == 200:
+                            response = retry_resp
         except httpx.HTTPError as exc:
             raise HTTPException(502, f'Cannot reach the voice transcription service: {exc}') from None
         if response.status_code != 200:
