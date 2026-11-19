@@ -1,5 +1,5 @@
 import React,{useState,useEffect,useRef,lazy,Suspense} from 'react';
-import {Login,Sheet,Icon,Mark,ErrorMessage,Loader,Empty,api,apiUpload,useData,datetime,localInput,iso} from './ui.jsx';
+import {Login,Sheet,Icon,Mark,Avatar,ErrorMessage,Loader,Empty,api,apiUpload,useData,datetime,localInput,iso} from './ui.jsx';
 import './collective.css';
 import './premium.css';
 import VoiceInput from './VoiceInput.jsx';
