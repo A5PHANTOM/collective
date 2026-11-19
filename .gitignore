@@ -4,8 +4,6 @@ dist/
 .env
 __pycache__/
 *.pyc
-data/*.json
-data/*.sqlite3*
 .DS_Store
 .vercel
 .env*

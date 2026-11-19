@@ -1,0 +1,94 @@
+{
+  "spaces": [
+    {
+      "id": "digital",
+      "name": "Digital & IT",
+      "description": "Build better digital experiences."
+    },
+    {
+      "id": "21ef98c4-3141-477a-9266-c1ad4e3b8cff",
+      "name": "ASIMOVX",
+      "description": ""
+    },
+    {
+      "id": "d4e0fd73-94ae-4934-9f0a-57dee287f918",
+      "name": "term jobs",
+      "description": ""
+    }
+  ],
+  "users": [
+    {
+      "id": "229eabe0-2dd1-40cf-818a-3b2fb2981f3e",
+      "name": "Alex Morgan",
+      "email": "admin@gmail.com",
+      "role": "admin",
+      "salt": "7de6d7ecdb7bbee33af19c20f07d98cb",
+      "password": "837909e6a801f7e471297e105baff44882c9af847c5e4b0d8c6123fd318607209d36b433fac50a422c82795bdea3c41b680d171f0350fe027737b892c3f7c0bf",
+      "spaces": [
+        "21ef98c4-3141-477a-9266-c1ad4e3b8cff",
+        "d4e0fd73-94ae-4934-9f0a-57dee287f918",
+        "digital"
+      ]
+    },
+    {
+      "id": "2b6d9bfa-c96a-4e86-9952-326f9d27d6f8",
+      "name": "Arjun",
+      "email": "arjunmcseawh@gmail.com",
+      "role": "member",
+      "salt": "c2116f76b847aeae927c1b1e1f487fac",
+      "password": "5014cdc519415def4347ff4b962f068c2524623a3d2c1f20afca4098e56dab129d6d4e8a559dda18ba8b1b786646c34617b79fb8b3bc0a4a37a4e7cb89813ddf",
+      "spaces": [
+        "21ef98c4-3141-477a-9266-c1ad4e3b8cff",
+        "digital"
+      ]
+    },
+    {
+      "id": "test-member",
+      "name": "Member",
+      "email": "member@test.com",
+      "role": "member",
+      "salt": "746c6e526b3a8a16164eb0b4232a8dba",
+      "password": "8e99713ec8f04568faee8c78af81fce9e595bd1a2cc58fd1807b23e105668e3cd25acf8e6979c2b504402f948e60c1a63390454fd154f3d39d4a8d9446abca6d",
+      "spaces": []
+    },
+    {
+      "id": "arjun-termjobs",
+      "name": "Arjun",
+      "email": "arjun@termjobs.in",
+      "role": "member",
+      "salt": "0f2abecf5b4ee7d487cd6b42c2832686",
+      "password": "d14fe78c73f6cd90c9f3c8563bd187fa69951ea5e2990952e4d94c8436236a730d2a4876f320d40738720b51a5d964f293844999f4ad90e0dc26c7a995ee619d",
+      "spaces": []
+    },
+    {
+      "id": "5300b284-83bf-459c-a7fd-425383371dde",
+      "name": "Test 4-char",
+      "email": "four@example.com",
+      "role": "member",
+      "salt": "fa665f2575f5b91d8abd171952cda228",
+      "password": "8aab89a44e21dc836b7de2f48a9948aeb4a7905601befbe8e44e552c124f39209e781e6ef627fa57fd56aa15903160ac00d0fa0e2ed5ad69d0baa987eea28532",
+      "spaces": []
+    },
+    {
+      "id": "3585bdbb-fe1b-4895-b818-2871325cdf95",
+      "name": "hashil",
+      "email": "hashil@gmail.com",
+      "role": "member",
+      "salt": "96caaf0eae5687e5411c9e6e352abdd6",
+      "password": "c32fad03ac3e030b9635627478f5f6b986baab2b85eca9e9df416ffaf578dd4067806855bd8c0682dfde5abfa9c88f6eca280fd309ac0d59746e3ecf3cc4165a",
+      "spaces": []
+    },
+    {
+      "id": "05c38fa8-1e45-4dd5-88f5-4659537becce",
+      "name": "bashaar",
+      "email": "bashar@gmail.com",
+      "role": "member",
+      "salt": "6c34443b86c8f764c39c7136723b0e38",
+      "password": "0482a74cea345916f8eafe2dfae07ade032fd2849e6d62d24591d40532d7aac2863f5bf78ccc2ceb83b182e47f86d9afb9886bf55367dc5eb3319682edbd73c7",
+      "spaces": []
+    }
+  ],
+  "items": [],
+  "messages": [],
+  "activities": []
+}
