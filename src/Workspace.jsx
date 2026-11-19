@@ -38,7 +38,10 @@ function Work({space,tab,user,open}){
    setBusy(false);
   }
  }
- const members = data?.members?.length ? data.members : [{id:user.id, name:user.name}];
+ const members = [...(data?.members || [])];
+ if (!members.some(m => m.id === user.id)) {
+  members.unshift({ id: user.id, name: user.name + ' (You)' });
+ }
  return <>
   <div className="section-heading" style={{margin:'20px 0 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
    <div>

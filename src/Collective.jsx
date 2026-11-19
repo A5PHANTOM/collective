@@ -30,9 +30,174 @@ export default function Collective(){
 }
 function Today({user,open,onWorkspace}){
  const [delegated,setDelegated]=useState(false),[completed,setCompleted]=useState(false),[offset,setOffset]=useState(0);
+ const [creatingTask,setCreatingTask]=useState(false);
+ const [toast,setToast]=useState('');
  const {data,error,loading,reload}=useData(`/me/tasks?assigned_by_me=${delegated}&completed=${completed}&offset=${offset}&timezone_name=${encodeURIComponent(tz)}`);
  useEffect(()=>{const t=setInterval(()=>{if(document.visibilityState==='visible')reload()},15000);return()=>clearInterval(t)},[reload]);
- return <section className="today"><div className="day-heading"><span className="eyebrow">{new Date().toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric'})}</span><h1>Tasks<span>.</span></h1><p>All your work, together. Track assignments, deadlines, and notifications across workspaces.</p></div><div className="task-filters"><button className={!delegated?'active':''} onClick={()=>{setDelegated(false);setOffset(0)}}>Assigned to me</button><button className={delegated?'active':''} onClick={()=>{setDelegated(true);setOffset(0)}}>Assigned by me</button><label><input type="checkbox" checked={completed} onChange={e=>{setCompleted(e.target.checked);setOffset(0)}}/> Include completed</label></div><ErrorMessage>{error}</ErrorMessage>{error&&<button className="button" onClick={reload}>Retry</button>}{loading?<Loader/>:data&&<>{data.total===0&&<div className="day-empty"><Icon name="check" size={28}/><h2>{delegated?'No delegated tasks yet':'You’re all clear'}</h2><p>{delegated?'Tasks you assign will appear here.':'Your assigned tasks will appear here, across all your workspaces.'}</p><button className="button primary" onClick={onWorkspace}>Open workspaces</button></div>}{data.tasks.length>0&&<section className="task-group all-tasks"><h2>All tasks<span>{data.total}</span></h2>{data.tasks.map(t=><TaskCard key={t.id} task={t} open={open}/>)}</section>}<div className="pagination">{offset>0&&<button className="button" onClick={()=>setOffset(Math.max(0,offset-50))}>Previous</button>}{data.next_offset!==null&&<button className="button" onClick={()=>setOffset(data.next_offset)}>Next tasks</button>}</div></>}<Inbox open={open} embedded/></section>;
+ useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(t)},[toast]);
+
+ return <section className="today">
+  <div className="workspace-page-heading">
+   <div className="day-heading">
+    <span className="eyebrow">{new Date().toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric'})}</span>
+    <h1>Tasks<span>.</span></h1>
+    <p>All your work, together. Track assignments, deadlines, and notifications across workspaces.</p>
+   </div>
+   <div className="workspace-actions">
+    <button className="button primary" onClick={()=>setCreatingTask(true)}>
+     <Icon name="plus" size={16}/>
+     <span>New task</span>
+    </button>
+   </div>
+  </div>
+  <div className="task-filters">
+   <button className={!delegated?'active':''} onClick={()=>{setDelegated(false);setOffset(0)}}>Assigned to me</button>
+   <button className={delegated?'active':''} onClick={()=>{setDelegated(true);setOffset(0)}}>Assigned by me</button>
+   <label><input type="checkbox" checked={completed} onChange={e=>{setCompleted(e.target.checked);setOffset(0)}}/> Include completed</label>
+  </div>
+  <ErrorMessage>{error}</ErrorMessage>
+  {error&&<button className="button" onClick={reload}>Retry</button>}
+  {loading?<Loader/>:data&&<>
+   {data.total===0&&<div className="day-empty">
+    <Icon name="check" size={28}/>
+    <h2>{delegated?'No delegated tasks yet':'You’re all clear'}</h2>
+    <p>{delegated?'Tasks you assign will appear here.':'Your assigned tasks will appear here, across all your workspaces.'}</p>
+    <div style={{display:'flex',gap:'10px',marginTop:'14px',flexWrap:'wrap',justifyContent:'center'}}>
+     <button className="button primary" onClick={()=>setCreatingTask(true)}>
+      <Icon name="plus" size={16}/>
+      <span>Create a task</span>
+     </button>
+     <button className="button" onClick={onWorkspace}>Open workspaces</button>
+    </div>
+   </div>}
+   {data.tasks.length>0&&<section className="task-group all-tasks"><h2>All tasks<span>{data.total}</span></h2>{data.tasks.map(t=><TaskCard key={t.id} task={t} open={open}/>)}</section>}
+   <div className="pagination">
+    {offset>0&&<button className="button" onClick={()=>setOffset(Math.max(0,offset-50))}>Previous</button>}
+    {data.next_offset!==null&&<button className="button" onClick={()=>setOffset(data.next_offset)}>Next tasks</button>}
+   </div>
+  </>}
+  <Inbox open={open} embedded/>
+  {creatingTask&&<CreateTaskSheet user={user} onClose={()=>setCreatingTask(false)} onCreated={(task)=>{reload();setToast('Task created.');if(task?.id)open(task.id)}}/>}
+  {toast&&<div className="toast" role="status" onClick={()=>setToast('')}>{toast}</div>}
+ </section>;
+}
+
+function CreateTaskSheet({user,onClose,onCreated}){
+ const {data:spaces,loading:loadingSpaces,error:spacesError}=useData('/me/workspaces');
+ const [spaceId,setSpaceId]=useState('');
+ const [busy,setBusy]=useState(false);
+ const [failure,setFailure]=useState('');
+ const [members,setMembers]=useState([]);
+ const [projects,setProjects]=useState([]);
+ const [loadingSpaceData,setLoadingSpaceData]=useState(false);
+
+ useEffect(()=>{
+  if(spaces?.length&&!spaceId){
+   setSpaceId(spaces[0].id);
+  }
+ },[spaces,spaceId]);
+
+ useEffect(()=>{
+  if(!spaceId)return;
+  setLoadingSpaceData(true);
+  api('/spaces/'+spaceId+'/work')
+   .then(data=>{
+    const m = data?.members?.length ? [...data.members] : [];
+    if(!m.some(x=>x.id===user.id)){
+     m.unshift({id:user.id,name:user.name});
+    }
+    setMembers(m);
+    setProjects(data?.projects||[]);
+   })
+   .catch(err=>setFailure(err.message))
+   .finally(()=>setLoadingSpaceData(false));
+ },[spaceId,user.id,user.name]);
+
+ async function submit(e){
+  e.preventDefault();
+  if(busy||!spaceId)return;
+  setBusy(true);
+  setFailure('');
+  const f=Object.fromEntries(new FormData(e.currentTarget));
+  try{
+   const result=await api('/spaces/'+spaceId+'/tasks',{
+    method:'POST',
+    body:{
+     title:f.title,
+     description:f.description||'',
+     assignee_id:f.assignee_id||user.id,
+     project_id:f.project_id||null,
+     priority:f.priority||'Medium',
+     due_at:iso(f.due_at)
+    }
+   });
+   onCreated?.(result);
+   onClose();
+  }catch(err){
+   setFailure(err.message);
+  }finally{
+   setBusy(false);
+  }
+ }
+
+ return (
+  <Sheet title="New task" kicker="YOUR WORK, TOGETHER" onClose={onClose}>
+   <div className="sheet-body">
+    <ErrorMessage>{spacesError||failure}</ErrorMessage>
+    {loadingSpaces?<Loader/>:!spaces?.length?(
+     <div className="day-empty" style={{margin:'20px 0'}}>
+      <Icon name="box" size={28}/>
+      <h2>No workspace found</h2>
+      <p>You need to be in a workspace to create tasks.</p>
+     </div>
+    ):(
+     <form className="form-fields" onSubmit={submit}>
+      <label>Workspace
+       <select value={spaceId} onChange={e=>setSpaceId(e.target.value)} required>
+        {spaces.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+       </select>
+      </label>
+      <label>Task title
+       <input name="title" required maxLength={240} placeholder="What needs to be done?" autoFocus/>
+      </label>
+      <label>Details
+       <textarea name="description" rows={3} placeholder="Add brief, instructions, or deliverables…"/>
+      </label>
+      <div className="form-row">
+       <label>Assign to
+        <select name="assignee_id" defaultValue={user.id} disabled={loadingSpaceData}>
+         {members.map(m=><option key={m.id} value={m.id}>{m.name}{m.id===user.id?' (You)':''}</option>)}
+        </select>
+       </label>
+       <label>Priority
+        <select name="priority" defaultValue="Medium">
+         {['Low','Medium','High'].map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+       </label>
+      </div>
+      <div className="form-row">
+       <label>Project
+        <select name="project_id" defaultValue="" disabled={loadingSpaceData}>
+         <option value="">No project</option>
+         {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+       </label>
+       <label>Deadline
+        <input type="datetime-local" name="due_at"/>
+       </label>
+      </div>
+      <div className="sheet-actions">
+       <button type="button" className="button" onClick={onClose}>Cancel</button>
+       <button className="button primary" disabled={busy||loadingSpaceData}>
+        {busy?'Creating…':'Create task'}
+        <Icon name="arrow" size={16}/>
+       </button>
+      </div>
+     </form>
+    )}
+   </div>
+  </Sheet>
+ );
 }
 export function TaskCard({task:t,open}){return <button className="task-card" onClick={()=>open(t.id)}><span className={'task-check '+(t.status==='Done'?'done':'')}>{t.status==='Done'&&<Icon name="check" size={14}/>}</span><span className="task-copy"><strong>{t.title}</strong><span className="task-meta">{t.workspace_name&&<span>{t.workspace_name}</span>}<span>{t.assignee_name}</span><span>{t.due_at?datetime(t.due_at):'No deadline'}</span></span><span className="task-tags"><span>{t.status}</span><span className={t.priority==='High'?'priority-high':''}>{t.priority} priority</span></span></span><Icon name="chevron" size={16}/></button>}
 function TaskSheet({taskId,onClose,onSave}){

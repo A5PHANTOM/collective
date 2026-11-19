@@ -41,7 +41,7 @@ class ProjectInput(BaseModel):
 class TaskInput(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     description: str = Field(default='', max_length=6000)
-    assignee_id: str
+    assignee_id: str = ''
     due_at: datetime | None = None
     priority: Literal['Low', 'Medium', 'High'] = 'Medium'
     project_id: str | None = None
@@ -87,13 +87,6 @@ class TaskUpdate(BaseModel):
     def aware(cls, value):
         if value and value.tzinfo is None: raise ValueError('Include a timezone')
         return value
-
-    @field_validator('project_id', 'order_id')
-    @classmethod
-    def clean_fk(cls, value):
-        if not value or not str(value).strip():
-            return None
-        return str(value).strip()
 
 class ActionInput(BaseModel):
     question: str = Field(min_length=1, max_length=6000)
