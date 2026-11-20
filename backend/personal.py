@@ -496,11 +496,17 @@ def register_personal(app,current_user,service):
 
         try:
             async with provider_client(app) as client:
+                transcription_payload = {
+                    'model': os.environ.get('GROQ_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'),
+                    'response_format': 'json',
+                    'language': 'en',
+                    'temperature': '0',
+                }
                 response = await client.post(
                     'https://api.groq.com/openai/v1/audio/transcriptions',
                     headers={'Authorization': 'Bearer ' + key},
                     files={'file': (upload_filename, content, upload_content_type)},
-                    data={'model': os.environ.get('GROQ_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'), 'response_format': 'json'},
+                    data=transcription_payload,
                 )
                 if response.status_code != 200 and upload_filename == 'voice-note.m4a':
                     try:
@@ -512,7 +518,7 @@ def register_personal(app,current_user,service):
                             'https://api.groq.com/openai/v1/audio/transcriptions',
                             headers={'Authorization': 'Bearer ' + key},
                             files={'file': ('voice-note.mp4', content, 'audio/mp4')},
-                            data={'model': os.environ.get('GROQ_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'), 'response_format': 'json'},
+                            data=transcription_payload,
                         )
                         if retry_resp.status_code == 200:
                             response = retry_resp

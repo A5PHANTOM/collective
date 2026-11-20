@@ -300,11 +300,13 @@ class PersonalTests(unittest.TestCase):
             self.assertEqual(data['result']['answer'], 'Recovered after retry!')
 
     def test_transcribe_voice_note_supported_types(self):
+        posted_data = []
         class FakeClient:
             def __init__(self, **kwargs): pass
             async def __aenter__(self): return self
             async def __aexit__(self, *args): pass
             async def post(self, *args, **kwargs):
+                posted_data.append(kwargs.get('data'))
                 class FakeResp:
                     status_code = 200
                     def json(self): return {'text': 'Transcribed voice note text'}
@@ -315,11 +317,13 @@ class PersonalTests(unittest.TestCase):
             r1 = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.webm', b'dummy-audio-bytes', 'audio/webm')})
             self.assertEqual(r1.status_code, 200)
             self.assertEqual(r1.json()['text'], 'Transcribed voice note text')
+            self.assertEqual(posted_data[-1].get('language'), 'en')
 
             # Test m4a / audio/mp4 (Safari/iOS)
             r2 = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.m4a', b'dummy-audio-bytes', 'audio/mp4')})
             self.assertEqual(r2.status_code, 200)
             self.assertEqual(r2.json()['text'], 'Transcribed voice note text')
+            self.assertEqual(posted_data[-1].get('language'), 'en')
 
             # Test audio/x-m4a
             r3 = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.m4a', b'dummy-audio-bytes', 'audio/x-m4a')})
@@ -329,6 +333,7 @@ class PersonalTests(unittest.TestCase):
             r_wav = self.client.post('/api/me/ai/transcribe', files={'audio': ('voice.wav', b'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00', 'audio/wav')})
             self.assertEqual(r_wav.status_code, 200)
             self.assertEqual(r_wav.json()['text'], 'Transcribed voice note text')
+            self.assertEqual(posted_data[-1].get('language'), 'en')
 
             # Test invalid format
             r4 = self.client.post('/api/me/ai/transcribe', files={'audio': ('file.exe', b'bad-bytes', 'application/x-msdownload')})
