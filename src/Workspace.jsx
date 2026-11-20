@@ -11,16 +11,18 @@ export default function Workspace({admin,user,open,onAdmin}){
  async function create(e){e.preventDefault();if(busy)return;setBusy(true);setNotice('');const fd=new FormData(e.currentTarget);const body={name:fd.get('name'),description:fd.get('description')||'',member_ids:fd.getAll('members')};try{const result=await api('/admin/spaces',{method:'POST',body});await reload();if(reloadAdmin)await reloadAdmin();setCreating(false);setSpace(result.id);setTab('members');setNotice('Workspace created.')}catch(e){setNotice(e.message)}finally{setBusy(false)}}
  if(admin)return <Admin notify={setNotice} onChange={async()=>{await reload();if(reloadAdmin)await reloadAdmin()}} user={user}/>;
  const current=spaces?.find(s=>s.id===space);
- return <section><ErrorMessage>{error}</ErrorMessage>{!current?<><div className="workspace-page-heading"><div className="day-heading"><span className="eyebrow">GOOD WORK, TOGETHER</span><h1>Workspaces<span>.</span></h1><p>Your people and projects, with room to grow.</p></div>{user.role==='admin'&&<div className="workspace-actions"><button className="button primary" onClick={()=>setCreating(true)}>+ New workspace</button><button className="button" onClick={onAdmin}>People & spaces</button></div>}</div>{user.role!=='admin'&&<p className="workspace-help">An administrator can create workspaces and manage access. Open a workspace’s Members tab to see your team.</p>}<div className="workspace-list">{spaces?.map(s=><article className="workspace-card" key={s.id}><button onClick={()=>{setSpace(s.id);setTab('tasks')}}><span>↗</span><h2>{s.name}</h2><p>{s.description}</p></button>{user.role==='admin'&&<DeleteWorkspace space={s} notify={setNotice} onDeleted={async()=>{if(space===s.id)setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="icon-button workspace-delete" ariaLabel={'Delete '+s.name}><Icon name="trash" size={16}/></DeleteWorkspace>}</article>)}</div>{spaces?.length===0&&<p>Ask your administrator to add you to a workspace.</p>}</>:<><button className="text-button" onClick={()=>setSpace('')}>← All workspaces</button><div className="workspace-detail-heading"><h1>{current.name}</h1>{user.role==='admin'&&<DeleteWorkspace space={current} notify={setNotice} onDeleted={async()=>{setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="button danger-outline">Delete workspace</DeleteWorkspace>}</div><nav className="workspace-tabs">{[['tasks','Tasks'],['projects','Projects'],['history','Task history'],['orders','Orders'],['team','Team'],['members','Members']].map(([k,label])=><button key={k} className={k===tab?'active':''} onClick={()=>setTab(k)}>{label}</button>)}</nav>{tab==='history'?<TaskHistory space={current} user={user} open={open}/>:tab==='members'?<Members space={space} user={user} onAdmin={onAdmin} onChange={reload}/>:tab==='orders'?<Orders workspace={current} user={user} notify={setNotice} onAI={()=>setTab('team')}/>:tab==='team'?<Channel space={current||{id:space,name:'team'}} user={user} open={open}/>:<Work key={space+tab} space={current} tab={tab} user={user} open={open}/>}</>}{notice&&<div className="toast" role="status" onClick={()=>setNotice('')}>{notice}</div>}{creating&&<Sheet title="New workspace" kicker="MAKE ROOM FOR YOUR TEAM" onClose={()=>setCreating(false)}><form className="sheet-body form-fields" onSubmit={create}><label>Workspace name<input name="name" required maxLength={80} placeholder="e.g. Events"/></label><label>Description<textarea name="description" maxLength={200} placeholder="What will your team work on here?"/></label>{adminData?.users?.length>1&&<fieldset><legend>Add team members</legend><p className="helper">Select members to include in this workspace. You will be added automatically.</p><div style={{maxHeight:'160px',overflowY:'auto',display:'grid',gap:'8px'}}>{adminData.users.filter(u=>u.id!==user.id).map(u=><label className="check-label" key={u.id}><input type="checkbox" name="members" value={u.id}/><span><strong>{u.name}</strong> <small>({u.email})</small></span></label>)}</div></fieldset>}<ErrorMessage>{notice}</ErrorMessage><button className="button primary" disabled={busy}>{busy?'Creating…':'Create workspace'}</button></form></Sheet>}</section>;
+ return <section><ErrorMessage>{error}</ErrorMessage>{!current?<><div className="workspace-page-heading"><div className="day-heading"><span className="eyebrow">GOOD WORK, TOGETHER</span><h1>Workspaces<span>.</span></h1><p>Your people and projects, with room to grow.</p></div>{user.role==='admin'&&<div className="workspace-actions"><button className="button primary" onClick={()=>setCreating(true)}>+ New workspace</button><button className="button" onClick={onAdmin}>People & spaces</button></div>}</div>{user.role!=='admin'&&<p className="workspace-help">An administrator can create workspaces and manage access. Open a workspace’s Members tab to see your team.</p>}<div className="workspace-list">{spaces?.map(s=><article className="workspace-card" key={s.id}><button onClick={()=>{setSpace(s.id);setTab('tasks')}}><span>↗</span><h2>{s.name}</h2><p>{s.description}</p></button>{user.role==='admin'&&<DeleteWorkspace space={s} notify={setNotice} onDeleted={async()=>{if(space===s.id)setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="icon-button workspace-delete" ariaLabel={'Delete '+s.name}><Icon name="trash" size={16}/></DeleteWorkspace>}</article>)}</div>{spaces?.length===0&&<p>Ask your administrator to add you to a workspace.</p>}</>:<><button className="text-button" onClick={()=>setSpace('')}>← All workspaces</button><div className="workspace-detail-heading"><h1>{current.name}</h1>{user.role==='admin'&&<DeleteWorkspace space={current} notify={setNotice} onDeleted={async()=>{setSpace('');await reload();if(reloadAdmin)await reloadAdmin()}} className="button danger-outline">Delete workspace</DeleteWorkspace>}</div><nav className="workspace-tabs">{[['tasks','Tasks'],['projects','Projects'],['history','Task history'],['orders','Orders'],['team','Team'],['members','Members']].map(([k,label])=><button key={k} className={k===tab?'active':''} onClick={()=>setTab(k)}>{label}</button>)}</nav>{tab==='history'?<TaskHistory space={current} user={user} open={open}/>:tab==='members'?<Members space={space} user={user} onAdmin={onAdmin} onChange={reload}/>:tab==='orders'?<Orders workspace={current} user={user} notify={setNotice} onAI={()=>setTab('team')}/>:tab==='team'?<Channel space={current||{id:space,name:'team'}} user={user} open={open}/>:<Work key={space+tab} space={current} tab={tab} user={user} open={open} onSelectTab={setTab}/>}</>}{notice&&<div className="toast" role="status" onClick={()=>setNotice('')}>{notice}</div>}{creating&&<Sheet title="New workspace" kicker="MAKE ROOM FOR YOUR TEAM" onClose={()=>setCreating(false)}><form className="sheet-body form-fields" onSubmit={create}><label>Workspace name<input name="name" required maxLength={80} placeholder="e.g. Events"/></label><label>Description<textarea name="description" maxLength={200} placeholder="What will your team work on here?"/></label>{adminData?.users?.length>1&&<fieldset><legend>Add team members</legend><p className="helper">Select members to include in this workspace. You will be added automatically.</p><div style={{maxHeight:'160px',overflowY:'auto',display:'grid',gap:'8px'}}>{adminData.users.filter(u=>u.id!==user.id).map(u=><label className="check-label" key={u.id}><input type="checkbox" name="members" value={u.id}/><span><strong>{u.name}</strong> <small>({u.email})</small></span></label>)}</div></fieldset>}<ErrorMessage>{notice}</ErrorMessage><button className="button primary" disabled={busy}>{busy?'Creating…':'Create workspace'}</button></form></Sheet>}</section>;
 }
 function Members({space,user,onAdmin,onChange}){
  const admin=user.role==='admin';const {data,error,reload}=useData(admin?'/admin':'/spaces/'+space+'/work');const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
  async function save(e){e.preventDefault();setBusy(true);setMessage('');try{const members=new FormData(e.currentTarget).getAll('members');if(user?.id&&!members.includes(user.id))members.push(user.id);await api('/admin/spaces/'+encodeURIComponent(space)+'/members',{method:'PUT',body:{member_ids:members}});await reload();await onChange();setMessage('Workspace members updated.')}catch(e){setMessage(e.message)}finally{setBusy(false)}}
  return <section className="workspace-members"><div className="section-heading"><h2>Members</h2>{admin&&<button className="button" onClick={onAdmin}>Add a new person</button>}</div><p>{admin?'Select the people who can access this workspace. Other workspace memberships stay unchanged.':'These people have access to this workspace. Ask an administrator to add or remove members.'}</p><ErrorMessage>{error}</ErrorMessage>{!data?<Loader/>:admin?<form onSubmit={save} key={space+'-'+JSON.stringify((data.users||[]).map(u=>u.id+':'+u.spaces.includes(space)))}>{data.users.map(u=><label className="member-choice" key={u.id}><input type="checkbox" name="members" value={u.id} defaultChecked={u.spaces.includes(space)}/><span><strong>{u.name}</strong><small>{u.email}</small></span><span>{u.role}</span></label>)}<button className="button primary" disabled={busy}>{busy?'Saving…':'Save members'}</button></form>:data.members.map(m=><div className="member-choice" key={m.id}><strong>{m.name}</strong><span>{m.role}</span></div>)}<p role="status">{message}</p></section>
 }
-function Work({space,tab,user,open}){
+function Work({space,tab,user,open,onSelectTab}){
  const {data,error,reload}=useData('/spaces/'+space.id+'/work');
  const [creating,setCreating]=useState(false),[failure,setFailure]=useState(''),[busy,setBusy]=useState(false);
+ const [filterProject,setFilterProject]=useState('');
+ const [defaultProject,setDefaultProject]=useState('');
  async function save(e){
   e.preventDefault();
   if(busy)return;
@@ -32,6 +34,7 @@ function Work({space,tab,user,open}){
     body:{...f,due_at:iso(f.due_at),...(tab==='tasks'?{project_id:f.project_id||null}:{})}
    });
    setCreating(false);
+   setDefaultProject('');
    reload();
   }catch(e){
    setFailure(e.message);
@@ -43,6 +46,7 @@ function Work({space,tab,user,open}){
  if (!members.some(m => m.id === user.id)) {
   members.unshift({ id: user.id, name: user.name + ' (You)' });
  }
+ const visibleTasks = tab==='tasks' && data?.tasks ? (filterProject ? data.tasks.filter(t=>t.project_id===filterProject) : data.tasks) : [];
  return <>
   <div className="section-heading" style={{margin:'20px 0 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
    <div>
@@ -56,19 +60,36 @@ function Work({space,tab,user,open}){
   </div>
   <ErrorMessage>{error}</ErrorMessage>
   {!data?<Loader/>:tab==='tasks'?(
-   data.tasks.length===0?(
-    <div className="day-empty" style={{margin:'20px 0'}}>
-     <Icon name="check" size={28}/>
-     <h2>No tasks here yet</h2>
-     <p>Create a task to track deliverables, assign to teammates, and set deadlines.</p>
-     <button className="button primary" onClick={()=>setCreating(true)}>
-      <Icon name="plus" size={16}/>
-      <span>Create your first task</span>
-     </button>
-    </div>
-   ):(
-    data.tasks.map(t=><TaskCard key={t.id} task={{...t,workspace_name:space.name}} open={open}/>)
-   )
+   <>
+    {data.projects.length>0&&(
+     <div className="filter-chips" style={{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'16px',alignItems:'center'}}>
+      <button type="button" className={`pill-filter ${!filterProject?'active':''}`} onClick={()=>setFilterProject('')}>
+       All tasks ({data.tasks.length})
+      </button>
+      {data.projects.map(p=>{
+       const pCount = data.tasks.filter(t=>t.project_id===p.id).length;
+       return (
+        <button key={p.id} type="button" className={`pill-filter ${filterProject===p.id?'active':''}`} onClick={()=>setFilterProject(filterProject===p.id?'':p.id)}>
+         📁 {p.name} ({pCount})
+        </button>
+       );
+      })}
+     </div>
+    )}
+    {visibleTasks.length===0?(
+     <div className="day-empty" style={{margin:'20px 0'}}>
+      <Icon name="check" size={28}/>
+      <h2>{filterProject?'No tasks in this project yet':'No tasks here yet'}</h2>
+      <p>{filterProject?'Add deliverables and milestones to this project.':'Create a task to track deliverables, assign to teammates, and set deadlines.'}</p>
+      <button className="button primary" onClick={()=>{if(filterProject)setDefaultProject(filterProject);setCreating(true);}}>
+       <Icon name="plus" size={16}/>
+       <span>{filterProject?'Add task to this project':'Create your first task'}</span>
+      </button>
+     </div>
+    ):(
+     visibleTasks.map(t=><TaskCard key={t.id} task={{...t,workspace_name:space.name}} open={open}/>)
+    )}
+   </>
   ):(
    data.projects.length===0?(
     <div className="day-empty" style={{margin:'20px 0'}}>
@@ -81,10 +102,28 @@ function Work({space,tab,user,open}){
      </button>
     </div>
    ):(
-    data.projects.map(p=><article className="project-card" key={p.id}><h2>{p.name}</h2><p>{p.description}</p><small>{p.done_count} of {p.task_count} tasks complete · {p.status}</small></article>)
+    data.projects.map(p=>(
+     <article className="project-card" key={p.id} style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'12px'}}>
+       <div>
+        <h2 style={{margin:'0 0 4px'}}>{p.name}</h2>
+        <p style={{margin:0}}>{p.description||'No description provided.'}</p>
+       </div>
+       <div style={{display:'flex',gap:'8px',flexShrink:0}}>
+        <button type="button" className="button small" onClick={()=>{setFilterProject(p.id);onSelectTab?.('tasks');}}>
+         View tasks ({p.task_count})
+        </button>
+        <button type="button" className="button small primary" onClick={()=>{setDefaultProject(p.id);setCreating(true);}}>
+         + Task
+        </button>
+       </div>
+      </div>
+      <small>{p.done_count} of {p.task_count} tasks complete · {p.status}</small>
+     </article>
+    ))
    )
   )}
-  {creating&&<Sheet title={'New '+(tab==='tasks'?'task':'project')} kicker={space.name} onClose={()=>setCreating(false)}>
+  {creating&&<Sheet title={'New '+(tab==='tasks'?'task':'project')} kicker={space.name} onClose={()=>{setCreating(false);setDefaultProject('');}}>
    <form onSubmit={save} className="sheet-body form-fields">
     <label>{tab==='tasks'?'Task title':'Project name'}<input name={tab==='tasks'?'title':'name'} required maxLength={160} placeholder={tab==='tasks'?'e.g. Update product catalog':'e.g. Winter Launch'} autoFocus/></label>
     <label>Description<textarea name="description" placeholder="Add any details, briefs, or instructions…" rows={3}/></label>
@@ -95,7 +134,7 @@ function Work({space,tab,user,open}){
       </select>
      </label>
      <label>Project
-      <select name="project_id">
+      <select name="project_id" defaultValue={defaultProject||filterProject||''}>
        <option value="">No project</option>
        {(data?.projects||[]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
@@ -109,7 +148,7 @@ function Work({space,tab,user,open}){
     <label>Deadline<input type="datetime-local" name="due_at"/></label>
     <ErrorMessage>{failure}</ErrorMessage>
     <div className="sheet-actions">
-     <button type="button" className="button" onClick={()=>setCreating(false)}>Cancel</button>
+     <button type="button" className="button" onClick={()=>{setCreating(false);setDefaultProject('');}}>Cancel</button>
      <button className="button primary" disabled={busy}>
       {busy?'Creating…':'Create '+(tab==='tasks'?'task':'project')}
       <Icon name="arrow" size={16}/>

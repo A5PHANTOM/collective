@@ -147,7 +147,7 @@ async def propose(app, run, destination_pass=False):
         for space in sources:
             w=dict(conn.execute('SELECT id,name FROM spaces WHERE id=?',(space,)).fetchone())
             w['members']=[dict(r) for r in conn.execute('SELECT u.id,u.name,u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.space_id=?',(space,))]
-            w['projects']=[dict(r) for r in conn.execute('SELECT id,name FROM projects WHERE space=? ORDER BY seq DESC LIMIT 100',(space,))]
+            w['projects']=[dict(r) for r in conn.execute('SELECT p.id,p.name,p.status,p.due_at,COUNT(t.id) AS task_count,COALESCE(SUM(t.status=\'Done\'),0) AS done_count FROM projects p LEFT JOIN tasks t ON p.id=t.project_id WHERE p.space=? GROUP BY p.id ORDER BY p.seq DESC LIMIT 100',(space,))]
             context['workspaces'].append(w)
         now_utc = datetime.now(timezone.utc)
         def mark_task(r):
@@ -165,8 +165,8 @@ async def propose(app, run, destination_pass=False):
             td['is_overdue'] = is_overdue
             return td
 
-        context['attention'] = [mark_task(r) for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.assignee_id=? AND t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 15",(user['id'],user['id'],run['space'],run['space'])).fetchall()]
-        context['pending_tasks'] = [mark_task(r) for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 20",(user['id'],run['space'],run['space'])).fetchall()]
+        context['attention'] = [mark_task(r) for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status,t.project_id,p.name AS project_name FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? LEFT JOIN projects p ON p.id=t.project_id WHERE t.assignee_id=? AND t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 15",(user['id'],user['id'],run['space'],run['space'])).fetchall()]
+        context['pending_tasks'] = [mark_task(r) for r in conn.execute("SELECT t.id,t.title,t.space,t.assignee_id,t.due_at,t.status,t.project_id,p.name AS project_name FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? LEFT JOIN projects p ON p.id=t.project_id WHERE t.status!='Done' AND (? IS NULL OR t.space=?) ORDER BY t.due_at IS NULL,t.due_at LIMIT 20",(user['id'],run['space'],run['space'])).fetchall()]
         context['pending_task_count'] = conn.execute("SELECT COUNT(*) FROM tasks t JOIN memberships m ON m.space_id=t.space AND m.user_id=? WHERE t.status!='Done' AND (? IS NULL OR t.space=?)",(user['id'],run['space'],run['space'])).fetchone()[0]
         context['overdue_tasks'] = [t for t in context['pending_tasks'] if t['is_overdue']]
         context['overdue_task_count'] = len(context['overdue_tasks'])
@@ -206,6 +206,13 @@ Formatting instructions for answer:
   1. ALWAYS bring up an urgent Overdue Notification section right at the top of your answer (e.g. "### ⚠️ Overdue Tasks Notification").
   2. Explicitly mark each overdue task with **[OVERDUE]**, note who it is assigned to, when its deadline passed, and state that the assigned work has not yet been finished.
   3. Include a link using [View](/?task=<id>) for every task mentioned.
+
+- MULTIPLE PROJECTS & PROJECT TASKS:
+  Each workspace contains multiple projects (found in workspaces.projects). Each project groups related tasks.
+  - When the user asks to create a project, use create_project with name and description.
+  - When the user asks to assign or create tasks for a project (e.g. 'add task X for project Y', 'assign Z to John under project P'):
+    Set project_id to the project ID or exact project name. You can create a project and create tasks under it in the same turn.
+  - When asked about progress or tasks in a specific project, filter pending_tasks by project_name or check workspaces.projects for task_count and done_count.
 
 - TEAM CHAT & SLACK BOT ACCESS:
   data.team_chat_history contains the recent conversation in this workspace channel. You have full access to what teammates have discussed, posted, asked, or updated.
@@ -302,6 +309,7 @@ def finish(app,service,run_id):
                 d=datetime.fromisoformat(due.replace('Z','+00:00'))
                 if d.tzinfo is None or d<=datetime.now(timezone.utc):
                     clarification={'question':'That deadline has passed or has no timezone. What future time should I use?','choices':[]}; proposed=[]; break
+        session_projects = {}
         for i,action in enumerate(proposed):
             conn.execute('SAVEPOINT action')
             try:
@@ -367,7 +375,19 @@ def finish(app,service,run_id):
                 args=dict(action['args'])
                 if action['tool']=='create_task':
                     args.setdefault('assignee_id',user['id']); args.setdefault('priority','Medium')
+                if action['tool'] in ('create_task','update_task'):
+                    proj_val = args.get('project_id') or args.get('project')
+                    if proj_val:
+                        p_str = str(proj_val).strip()
+                        if p_str.lower() in session_projects:
+                            args['project_id'] = session_projects[p_str.lower()]
+                        else:
+                            args['project_id'] = p_str
+                        args.pop('project', None)
                 receipt=service.execute(action['tool'],args,space,user)
+                if action['tool'] == 'create_project':
+                    session_projects[receipt['title'].strip().lower()] = receipt['id']
+                    session_projects[receipt['id']] = receipt['id']
                 receipt.update(space=space,workspace_name=conn.execute('SELECT name FROM spaces WHERE id=?',(space,)).fetchone()[0])
                 conn.execute('INSERT INTO action_receipts VALUES (?,?,?,?)',(uid(),run_id,i,json.dumps(receipt)))
                 actions.append(receipt)

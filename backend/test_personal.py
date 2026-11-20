@@ -498,4 +498,64 @@ class PersonalTests(unittest.TestCase):
         self.assertGreaterEqual(len(history), 1)
         self.assertEqual(history[0]['question'], 'Hello')
 
+    def test_task_project_assignment_and_resolution(self):
+        # 1. Create a project
+        p_res = self.client.post('/api/spaces/packaging/projects', json={'name': 'Packaging Rebrand', 'description': 'New look'})
+        self.assertEqual(p_res.status_code, 201)
+        project_id = p_res.json()['id']
+
+        # 2. Create task using project name instead of UUID
+        t_res = self.client.post('/api/spaces/packaging/tasks', json={
+            'title': 'Design new box',
+            'project_id': 'Packaging Rebrand',
+            'assignee_id': self.user['id']
+        })
+        self.assertEqual(t_res.status_code, 201)
+        task_data = t_res.json()
+        self.assertEqual(task_data['project_id'], project_id)
+
+        # 3. Snapshot includes project_name and task_count
+        snap = self.client.get('/api/spaces/packaging/work').json()
+        task_in_snap = next(t for t in snap['tasks'] if t['id'] == task_data['id'])
+        self.assertEqual(task_in_snap['project_name'], 'Packaging Rebrand')
+        proj_in_snap = next(p for p in snap['projects'] if p['id'] == project_id)
+        self.assertEqual(proj_in_snap['task_count'], 1)
+
+        # 4. Update task to clear project
+        u_res = self.client.patch('/api/tasks/' + task_data['id'], json={'clear_project': True})
+        self.assertEqual(u_res.status_code, 200)
+        self.assertIsNone(u_res.json()['project_id'])
+
+        # 5. Update task to assign back by partial project name
+        u_res2 = self.client.patch('/api/tasks/' + task_data['id'], json={'project_id': 'Rebrand'})
+        self.assertEqual(u_res2.status_code, 200)
+        self.assertEqual(u_res2.json()['project_id'], project_id)
+
+    def test_create_project_and_task_in_same_turn(self):
+        plan = {
+            'answer': 'Created project and task.',
+            'actions': [
+                {'tool': 'create_project', 'space': 'packaging', 'args': {'name': 'Termjobs Website', 'description': 'Platform site'}},
+                {'tool': 'create_task', 'space': 'packaging', 'args': {'title': 'Build landing page', 'project_id': 'Termjobs Website', 'assignee_id': self.user['id']}}
+            ]
+        }
+        async def fake_propose(*args, **kwargs):
+            return plan, ['packaging']
+        with patch('backend.personal.propose', fake_propose):
+            self.queue('req-chained-proj', question='create project Termjobs Website and add task Build landing page', space='packaging')
+            asyncio.run(process_one(self.app, self.app.state.work_service))
+
+        res = self.client.get('/api/me/ai/runs/req-chained-proj').json()
+        self.assertEqual(res['status'], 'completed')
+        actions = res['result']['actions']
+        self.assertEqual(len(actions), 2)
+        self.assertEqual(actions[0]['kind'], 'project')
+        self.assertEqual(actions[1]['kind'], 'task')
+        new_proj_id = actions[0]['id']
+        new_task_id = actions[1]['id']
+
+        # Verify task is linked to project
+        task_detail = self.client.get('/api/tasks/' + new_task_id).json()
+        self.assertEqual(task_detail['project_id'], new_proj_id)
+
 if __name__=='__main__':unittest.main()

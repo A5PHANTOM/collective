@@ -74,6 +74,8 @@ class TaskUpdate(BaseModel):
     priority: Literal['Low', 'Medium', 'High'] | None = None
     due_at: datetime | None = None
     clear_deadline: bool = False
+    project_id: str | None = None
+    clear_project: bool = False
     feedback: str = Field(default='', max_length=4000)
 
     @field_validator('title')
@@ -87,6 +89,12 @@ class TaskUpdate(BaseModel):
     def aware(cls, value):
         if value and value.tzinfo is None: raise ValueError('Include a timezone')
         return value
+
+    @field_validator('project_id')
+    @classmethod
+    def clean_proj(cls, value):
+        if not value or not str(value).strip(): return None
+        return str(value).strip()
 
 class ActionInput(BaseModel):
     question: str = Field(min_length=1, max_length=6000)
@@ -133,10 +141,10 @@ TEXT = {'type':'string'}
 OPTIONAL_TEXT = {'type':['string','null']}
 DUE = {'type':['string','null'],'description':'ISO 8601 timestamp with timezone offset, or null. Resolve relative dates using the provided user timezone and current date.'}
 TOOLS = [
-    schema_tool('create_task','Create a real task and notify its assignee. Use only a known member ID. Ask if the assignee or required details are ambiguous.',{
+    schema_tool('create_task','Create a real task and notify its assignee. Use only a known member ID. Group under a project by passing project_id (UUID or project name). Ask if the assignee or required details are ambiguous.',{
         'title':TEXT,'description':TEXT,'assignee_id':TEXT,'due_at':DUE,'priority':{'type':'string','enum':['Low','Medium','High']},'project_id':OPTIONAL_TEXT,'order_id':OPTIONAL_TEXT}),
-    schema_tool('update_task','Update an existing task, including assignment, deadline, progress, or feedback. Null means unchanged. Only clear a deadline when explicitly asked.',{
-        'task_id':TEXT,'title':OPTIONAL_TEXT,'description':OPTIONAL_TEXT,'assignee_id':OPTIONAL_TEXT,'status':{'type':['string','null'],'enum':['To do','In progress','Blocked','Done',None]},'priority':{'type':['string','null'],'enum':['Low','Medium','High',None]},'due_at':DUE,'clear_deadline':{'type':'boolean'},'feedback':TEXT}),
+    schema_tool('update_task','Update an existing task, including assignment, deadline, progress, project grouping (project_id), or feedback. Null means unchanged. Only clear a deadline when explicitly asked.',{
+        'task_id':TEXT,'title':OPTIONAL_TEXT,'description':OPTIONAL_TEXT,'assignee_id':OPTIONAL_TEXT,'status':{'type':['string','null'],'enum':['To do','In progress','Blocked','Done',None]},'priority':{'type':['string','null'],'enum':['Low','Medium','High',None]},'due_at':DUE,'clear_deadline':{'type':'boolean'},'project_id':OPTIONAL_TEXT,'clear_project':{'type':'boolean'},'feedback':TEXT}),
     schema_tool('create_project','Create a project in the current workspace. Group tasks with its returned ID.',{'name':TEXT,'description':TEXT,'due_at':DUE,'status':{'type':'string','enum':['Active','On hold','Completed']}}),
     schema_tool('update_project','Update a project in the current workspace. Preserve existing values unless the user asks for a change.',{'project_id':TEXT,'name':TEXT,'description':TEXT,'due_at':DUE,'status':{'type':'string','enum':['Active','On hold','Completed']}}),
     schema_tool('update_order_status','Record a packaging order status, feedback, finish estimate, follow-up reminder, or dispatch information.',{'order_id':TEXT,'stage':{'type':'string','enum':['Brief','Design','Approval','Production','Quality check','Dispatched']},'feedback':TEXT,'estimated_finish':DUE,'reminder_at':DUE,'tracking_id':TEXT,'carrier':TEXT}),
@@ -167,17 +175,28 @@ class WorkService:
     def notify(self, conn, recipient, space, task_id, title, body):
         conn.execute('INSERT INTO notifications(id,recipient_id,space,task_id,title,body,created) VALUES (?,?,?,?,?,?,?)',(uid(),recipient,space,task_id,title,body,now()))
 
+    def resolve_project(self, conn, space, ref):
+        if not ref or not str(ref).strip(): return None
+        ref = str(ref).strip()
+        row = conn.execute('SELECT id FROM projects WHERE id=? AND space=?', (ref, space)).fetchone()
+        if row: return row['id']
+        row = conn.execute('SELECT id FROM projects WHERE LOWER(name)=LOWER(?) AND space=?', (ref, space)).fetchone()
+        if row: return row['id']
+        row = conn.execute("SELECT id FROM projects WHERE (LOWER(name) LIKE LOWER(?) OR LOWER(?) LIKE '%' || LOWER(name) || '%') AND space=? ORDER BY LENGTH(name) ASC", (f'%{ref}%', ref, space)).fetchone()
+        if row: return row['id']
+        raise HTTPException(400, f'Project "{ref}" not found in this workspace')
+
     def create_task(self, space, payload, user):
         with connection(self.app) as conn:
             check_space(conn,user,space)
             target_assignee = payload.assignee_id.strip() if payload.assignee_id and payload.assignee_id.strip() else user['id']
             assignee = self.member(conn,target_assignee,space)
-            for name,table in [('project_id','projects'),('order_id','orders')]:
-                reference = getattr(payload,name)
-                if reference and not conn.execute(f'SELECT 1 FROM {table} WHERE id=? AND space=?',(reference,space)).fetchone():
-                    raise HTTPException(400,f'{name.replace("_id", "").capitalize()} must belong to this workspace')
+            resolved_project_id = self.resolve_project(conn, space, payload.project_id) if payload.project_id else None
+            if payload.order_id and not conn.execute('SELECT 1 FROM orders WHERE (id=? OR LOWER(name)=LOWER(?)) AND space=?',(payload.order_id,payload.order_id,space)).fetchone():
+                raise HTTPException(400,'Order must belong to this workspace')
             values = payload.model_dump()
             values['assignee_id'] = assignee['id']
+            values['project_id'] = resolved_project_id
             values['due_at'] = stamp(payload.due_at)
             values.update(id=uid(),space=space,created_by=user['id'],status='To do',created=now(),updated=now())
             conn.execute(f"INSERT INTO tasks({','.join(values)}) VALUES ({','.join('?' for _ in values)})",tuple(values.values()))
@@ -189,12 +208,26 @@ class WorkService:
     def update_task(self, task_id, payload, user, space=None):
         with connection(self.app) as conn:
             task = self.get_task(conn,user,task_id,space)
-            values = {key:value for key,value in payload.model_dump().items() if value is not None and key not in ['feedback','clear_deadline','due_at']}
+            values = {key:value for key,value in payload.model_dump().items() if value is not None and key not in ['feedback','clear_deadline','due_at','clear_project']}
             if payload.due_at is not None: values['due_at'] = stamp(payload.due_at)
             if payload.clear_deadline: values['due_at'] = None
+            if payload.clear_project: values['project_id'] = None
+            elif payload.project_id is not None:
+                pid = payload.project_id.strip()
+                values['project_id'] = self.resolve_project(conn, task['space'], pid) if pid else None
             assignee_id = values.get('assignee_id',task['assignee_id'])
             assignee = self.member(conn,assignee_id,task['space'])
-            changes = [f"{k.replace('_',' ').capitalize()}: {assignee['name'] if k=='assignee_id' else v or 'Not set'}" for k,v in values.items() if v!=task[k]]
+            changes = []
+            for k, v in values.items():
+                if v != task[k]:
+                    if k == 'assignee_id':
+                        label = assignee['name']
+                    elif k == 'project_id':
+                        p_row = conn.execute('SELECT name FROM projects WHERE id=?', (v,)).fetchone() if v else None
+                        label = p_row['name'] if p_row else 'None'
+                    else:
+                        label = v or 'Not set'
+                    changes.append(f"{k.replace('_',' ').capitalize()}: {label}")
             if not changes and not payload.feedback.strip(): return task_dict(task)
             values['updated'] = now()
             conn.execute(f"UPDATE tasks SET {','.join(k+'=?' for k in values)} WHERE id=?",(*values.values(),task_id))
