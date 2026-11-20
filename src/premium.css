@@ -3188,3 +3188,63 @@
   align-items: center !important;
   gap: 3px !important;
 }
+
+/* Navigation & Home buttons for standalone web app / iOS */
+.header-home-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #242c1f !important;
+}
+
+.brand-button {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  font: inherit !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.header-home-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 5px 11px !important;
+  border-radius: 9999px !important;
+  border: 1px solid #d4ddcc !important;
+  background: #f4f7ef !important;
+  color: #2e4324 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.header-home-pill:hover {
+  background: #e6ede0 !important;
+  border-color: #233420 !important;
+}
+
+.workspace-sub-nav {
+  padding: 4px 0 2px !important;
+  font-size: 13px !important;
+}
+
+.workspace-sub-nav .text-button {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #3b5030 !important;
+  padding: 3px 6px !important;
+  border-radius: 6px !important;
+}
+
+.workspace-sub-nav .text-button:hover {
+  background: #eef3e7 !important;
+}
+
+.admin-back-bar {
+  padding: 4px 0 8px !important;
+}
